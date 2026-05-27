@@ -1,5 +1,19 @@
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+
+function parseDataUrl(dataUrl: string): { mimeType: string; buffer: Buffer } {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+
+  if (!match) {
+    throw new Error("Invalid data URL format");
+  }
+
+  const mimeType = match[1];
+  const base64 = match[2];
+  return { mimeType, buffer: Buffer.from(base64, "base64") };
+}
+
 export async function POST(request: Request) {
   try {
     const { imageDataUrl } = (await request.json()) as { imageDataUrl?: string };
@@ -24,10 +38,15 @@ export async function POST(request: Request) {
       "https://n8n-service-xs54.onrender.com/webhook-test/scan-audiogram";
 
     try {
+      const { mimeType, buffer } = parseDataUrl(imageDataUrl);
+      const fileExtension = mimeType.split("/")[1] || "png";
+      const formData = new FormData();
+      formData.append("data", new Blob([new Uint8Array(buffer)], { type: mimeType }), `upload.${fileExtension}`);
+      formData.append("mimeType", mimeType);
+
       const res = await fetch(webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: imageDataUrl }),
+        body: formData,
       });
 
       const text = await res.text().catch(() => "");
