@@ -1,26 +1,108 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f7f9;
+  --foreground: #131417;
+  --surface: #ffffff;
+  --surface-soft: #eceef2;
+  --border: #d8dde6;
+  --brand: #df1237;
+  --brand-strong: #bb0025;
+  --muted: #596174;
+  --ok: #0f8a5f;
+  --warn: #9b6a02;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-heading);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-heading), "Segoe UI", sans-serif;
+  background-image:
+    radial-gradient(1200px 500px at 100% -10%, rgba(223, 18, 55, 0.08), transparent),
+    linear-gradient(180deg, #f7f8fa 0%, #eef1f6 100%);
+}
+
+.font-display {
+  font-family: var(--font-display), "Arial Narrow", sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.font-heading {
+  font-family: var(--font-heading), "Segoe UI", sans-serif;
+}
+
+.font-body {
+  font-family: var(--font-body), "Arial Narrow", sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.card {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 20px;
+  box-shadow: 0 20px 35px -32px rgba(13, 18, 31, 0.6);
+}
+
+.focus-ring {
+  outline: none;
+}
+
+.focus-ring:focus-visible {
+  box-shadow: 0 0 0 3px rgba(223, 18, 55, 0.25);
+}
+
+.page-enter {
+  animation: enter 280ms ease-out both;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseLogo {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 0.75;
+  }
+}
+
+.logo-pulse {
+  animation: pulseLogo 1.4s ease-in-out infinite;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-card {
+    box-shadow: none !important;
+    border: 1px solid #d9d9d9 !important;
+  }
 }
