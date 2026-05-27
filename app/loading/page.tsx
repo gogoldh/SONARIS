@@ -154,12 +154,12 @@ export default function LoadingPage() {
 
         let payload: ParsedWebhookResponse | null = null;
         try {
-          payload = rawText ? (JSON.parse(rawText) as typeof payload) : null;
+          payload = rawText ? (JSON.parse(rawText) as ParsedWebhookResponse) : null;
         } catch {
           payload = null;
         }
 
-        const responsePayload = payload ?? null;
+        const responsePayload: ParsedWebhookResponse | null = payload;
         const payloadValue = responsePayload?.payload;
         const errorValue = responsePayload?.error;
 
