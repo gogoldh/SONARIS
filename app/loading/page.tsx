@@ -16,6 +16,10 @@ function isNoAudiogramMessage(value: unknown): boolean {
   return typeof value === "string" && /no audiogram provided/i.test(value);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 type N8nWebhookResult = {
   rizivCriteriaMatched?: boolean;
   leftPTAUsed?: number;
@@ -147,15 +151,17 @@ export default function LoadingPage() {
           payload = null;
         }
 
-        if (isNoAudiogramMessage(payload?.payload) || isNoAudiogramMessage(payload?.error) || isNoAudiogramMessage(rawText)) {
+        const payloadRecord = isRecord(payload) ? payload : null;
+
+        if (isNoAudiogramMessage(payloadRecord?.payload) || isNoAudiogramMessage(payloadRecord?.error) || isNoAudiogramMessage(rawText)) {
           throw new Error("No audiogram provided");
         }
 
         if (!response.ok) {
-          throw new Error(payload?.error || rawText || "Analysis failed.");
+          throw new Error((payloadRecord?.error as string | undefined) || rawText || "Analysis failed.");
         }
 
-        const result = normalizeWebhookResult(payload?.payload ?? payload, pending);
+        const result = normalizeWebhookResult(payloadRecord?.payload ?? payload, pending);
         saveAnalysisResult(result);
         clearPendingInput();
         router.replace("/result");
