@@ -14,7 +14,7 @@ export function PrimaryButton({
   ...props
 }: PrimaryButtonProps) {
   const base =
-    "font-heading focus-ring inline-flex items-center justify-center rounded-full px-5 py-2.5 text-base font-semibold transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55";
+    "font-heading focus-ring inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-[0.95rem] font-semibold transition active:scale-[0.99] sm:min-h-12 sm:text-base disabled:cursor-not-allowed disabled:opacity-55";
 
   const styles =
     variant === "primary"

@@ -44,11 +44,11 @@ export default function ResultPage() {
   }
 
   return (
-    <div className="page-enter min-h-screen px-4 py-6 sm:px-6">
-      <main className="mx-auto w-full max-w-3xl space-y-4">
+    <div className="page-enter min-h-screen px-4 py-5 sm:px-6 sm:py-8">
+      <main className="app-shell mx-auto w-full max-w-4xl space-y-4 sm:space-y-5">
         <div className="print-card card p-5 sm:p-6">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <h1 className="text-3xl font-bold">{result.classification}</h1>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-2xl font-bold sm:text-3xl">{result.classification}</h1>
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${
                 result.referralRecommended ? "bg-[#fce6eb] text-[var(--brand)]" : "bg-[#e8f5ef] text-[var(--ok)]"
@@ -58,7 +58,7 @@ export default function ResultPage() {
             </span>
           </div>
 
-          <p className="mb-4 text-[15px] leading-6 text-[var(--muted)]">{result.summary}</p>
+          <p className="mb-4 text-sm leading-6 text-[var(--muted)] sm:text-[15px]">{result.summary}</p>
 
           <div className="rounded-2xl border border-[var(--border)] bg-[#f8f9fc] p-4">
             <p className="text-sm font-semibold">Recommendation</p>
@@ -68,15 +68,15 @@ export default function ResultPage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-[var(--border)] p-3">
               <p className="text-xs uppercase tracking-wide text-[var(--muted)]">PTA Left</p>
-              <p className="text-xl font-bold">{result.measurements.ptaLeft} dB</p>
+              <p className="text-lg font-bold sm:text-xl">{result.measurements.ptaLeft} dB</p>
             </div>
             <div className="rounded-xl border border-[var(--border)] p-3">
               <p className="text-xs uppercase tracking-wide text-[var(--muted)]">PTA Right</p>
-              <p className="text-xl font-bold">{result.measurements.ptaRight} dB</p>
+              <p className="text-lg font-bold sm:text-xl">{result.measurements.ptaRight} dB</p>
             </div>
             <div className="rounded-xl border border-[var(--border)] p-3">
               <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Confidence</p>
-              <p className="text-xl font-bold">{confidencePercent}%</p>
+              <p className="text-lg font-bold sm:text-xl">{confidencePercent}%</p>
               <p className="mt-1 text-xs text-[var(--muted)]">{confidenceLabel}</p>
             </div>
           </div>
@@ -100,7 +100,7 @@ export default function ResultPage() {
           ) : null}
         </div>
 
-        <div className="no-print card p-4">
+        <div className="no-print card p-4 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-2">
             <PrimaryButton fullWidth onClick={() => window.print()}>
               Download PDF

@@ -27,6 +27,8 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-heading), "Segoe UI", sans-serif;
+  min-height: 100dvh;
+  line-height: 1.45;
   background-image:
     radial-gradient(1200px 500px at 100% -10%, rgba(223, 18, 55, 0.08), transparent),
     linear-gradient(180deg, #f7f8fa 0%, #eef1f6 100%);
@@ -49,8 +51,62 @@ body {
 .card {
   border: 1px solid var(--border);
   background: var(--surface);
-  border-radius: 20px;
+  border-radius: clamp(16px, 2vw, 22px);
   box-shadow: 0 20px 35px -32px rgba(13, 18, 31, 0.6);
+}
+
+.app-shell {
+  width: min(calc(100vw - 1.5rem), 72rem);
+  margin-inline: auto;
+}
+
+@media (min-width: 40em) {
+  .app-shell {
+    width: min(calc(100vw - 2.5rem), 72rem);
+  }
+}
+
+.scan-layout {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+}
+
+.scan-panel {
+  min-width: 0;
+}
+
+@media (min-width: 48em) {
+  .scan-layout {
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 64em) {
+  .scan-layout {
+    grid-template-columns: minmax(0, 1.25fr) minmax(20rem, 0.75fr);
+  }
+}
+
+.soft-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0.8rem 1rem;
+  color: var(--foreground);
+  outline: none;
+  transition: box-shadow 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.soft-input::placeholder {
+  color: rgba(89, 97, 116, 0.75);
+}
+
+.soft-input:focus {
+  border-color: rgba(223, 18, 55, 0.55);
+  box-shadow: 0 0 0 3px rgba(223, 18, 55, 0.12);
+  background: #fff;
 }
 
 .focus-ring {

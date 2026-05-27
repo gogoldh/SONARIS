@@ -169,13 +169,13 @@ export default function LoadingPage() {
   }, [router]);
 
   return (
-    <div className="page-enter flex min-h-screen items-center justify-center p-6">
-      <main className="card w-full max-w-md px-8 py-10 text-center">
+    <div className="page-enter flex min-h-screen items-center justify-center px-4 py-8 sm:px-6">
+      <main className="card w-full max-w-md px-6 py-8 text-center sm:px-8 sm:py-10">
         <div className="mb-4 flex justify-center">
           <EarPulseLogo size="lg" muted animate />
         </div>
-        <h1 className="text-3xl font-bold">Loading...</h1>
-        <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--muted)]">
+        <h1 className="text-2xl font-bold sm:text-3xl">Loading...</h1>
+        <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--muted)] sm:text-[15px]">
           Processing audiogram input and applying rule-based hearing-loss criteria.
         </p>
       </main>
