@@ -30,6 +30,14 @@ type N8nWebhookResult = {
   checkedAt?: string;
 };
 
+type ParsedWebhookResponse = {
+  success?: boolean;
+  error?: string;
+  payload?: unknown;
+  result?: unknown;
+  analysis?: unknown;
+};
+
 function isN8nWebhookResult(value: unknown): value is N8nWebhookResult {
   return Boolean(value && typeof value === "object" && ("rizivCriteriaMatched" in value || "recommendation" in value || "checkedAt" in value));
 }
@@ -144,24 +152,26 @@ export default function LoadingPage() {
           body: rawText,
         });
 
-        let payload: { error?: string; success?: boolean; payload?: unknown } | null = null;
+        let payload: ParsedWebhookResponse | null = null;
         try {
           payload = rawText ? (JSON.parse(rawText) as typeof payload) : null;
         } catch {
           payload = null;
         }
 
-        const payloadRecord = isRecord(payload) ? payload : null;
+        const responsePayload = payload ?? null;
+        const payloadValue = responsePayload?.payload;
+        const errorValue = responsePayload?.error;
 
-        if (isNoAudiogramMessage(payloadRecord?.payload) || isNoAudiogramMessage(payloadRecord?.error) || isNoAudiogramMessage(rawText)) {
+        if (isNoAudiogramMessage(payloadValue) || isNoAudiogramMessage(errorValue) || isNoAudiogramMessage(rawText)) {
           throw new Error("No audiogram provided");
         }
 
         if (!response.ok) {
-          throw new Error((payloadRecord?.error as string | undefined) || rawText || "Analysis failed.");
+          throw new Error(errorValue || rawText || "Analysis failed.");
         }
 
-        const result = normalizeWebhookResult(payloadRecord?.payload ?? payload, pending);
+        const result = normalizeWebhookResult(payloadValue ?? responsePayload, pending);
         saveAnalysisResult(result);
         clearPendingInput();
         router.replace("/result");
