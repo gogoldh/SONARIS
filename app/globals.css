@@ -76,6 +76,10 @@ body {
   min-width: 0;
 }
 
+.scan-details {
+  display: none;
+}
+
 @media (min-width: 48em) {
   .scan-layout {
     gap: 1.25rem;
@@ -85,6 +89,10 @@ body {
 @media (min-width: 64em) {
   .scan-layout {
     grid-template-columns: minmax(0, 1.25fr) minmax(20rem, 0.75fr);
+  }
+
+  .scan-details {
+    display: block;
   }
 }
 

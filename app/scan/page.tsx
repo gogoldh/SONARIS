@@ -97,7 +97,7 @@ export default function ScanPage() {
             </p>
           </div>
 
-          <aside className="scan-panel card p-5 sm:p-6">
+          <aside className="scan-details scan-panel card p-5 sm:p-6">
             <h2 className="mb-3 text-sm font-bold sm:text-base">Scan details</h2>
             <div className="space-y-4">
               <label className="block">
