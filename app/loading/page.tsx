@@ -59,12 +59,25 @@ export default function LoadingPage() {
           body: JSON.stringify({ imageDataUrl: pending.imageDataUrl }),
         });
 
-        if (!response.ok) {
-          const payload = (await response.json()) as { error?: string };
-          throw new Error(payload.error || "Analysis failed.");
+        const rawText = await response.text();
+        console.log("/api/parse-image response", {
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          body: rawText,
+        });
+
+        let payload: { error?: string; success?: boolean; payload?: unknown } | null = null;
+        try {
+          payload = rawText ? (JSON.parse(rawText) as typeof payload) : null;
+        } catch {
+          payload = null;
         }
 
-        const payload = (await response.json()) as { success?: boolean; payload?: unknown };
+        if (!response.ok) {
+          throw new Error(payload?.error || rawText || "Analysis failed.");
+        }
+
         const result = normalizeWebhookResult(payload?.payload, pending);
         saveAnalysisResult(result);
         clearPendingInput();
