@@ -14,6 +14,10 @@ function parseDataUrl(dataUrl: string): { mimeType: string; buffer: Buffer } {
   return { mimeType, buffer: Buffer.from(base64, "base64") };
 }
 
+function isNoAudiogramMessage(value: unknown): boolean {
+  return typeof value === "string" && /no audiogram provided/i.test(value);
+}
+
 export async function POST(request: Request) {
   try {
     const { imageDataUrl } = (await request.json()) as { imageDataUrl?: string };
@@ -55,6 +59,20 @@ export async function POST(request: Request) {
         payload = text ? JSON.parse(text) : null;
       } catch {
         payload = null;
+      }
+
+      const upstreamMessage =
+        isNoAudiogramMessage(payload) ||
+        isNoAudiogramMessage(payload?.payload) ||
+        isNoAudiogramMessage(payload?.error)
+          ? "No audiogram provided"
+          : null;
+
+      if (upstreamMessage) {
+        return NextResponse.json(
+          { success: false, error: upstreamMessage, upstream: { status: res.status, payload, text } },
+          { status: 422 },
+        );
       }
 
       if (!res.ok) {

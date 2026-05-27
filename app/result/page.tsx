@@ -13,6 +13,22 @@ export default function ResultPage() {
   const [showDetails, setShowDetails] = useState(false);
   const result = useMemo(() => readAnalysisResult(), []);
 
+  const confidenceLabel =
+    result?.confidence === "provided-thresholds"
+      ? "High"
+      : result?.confidence === "webhook"
+        ? "API"
+        : "Estimated";
+
+  const confidencePercent =
+    result?.confidence === "provided-thresholds"
+      ? 95
+      : result?.confidence === "webhook"
+        ? 100
+        : 70;
+
+  const sourceLabel = result?.confidence === "webhook" ? "n8n API" : "rule-based engine";
+
   if (!result) {
     return (
       <div className="page-enter flex min-h-screen items-center justify-center p-6">
@@ -60,7 +76,8 @@ export default function ResultPage() {
             </div>
             <div className="rounded-xl border border-[var(--border)] p-3">
               <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Confidence</p>
-              <p className="text-xl font-bold">{result.confidence === "provided-thresholds" ? "High" : "Estimated"}</p>
+              <p className="text-xl font-bold">{confidencePercent}%</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">{confidenceLabel}</p>
             </div>
           </div>
 
@@ -77,7 +94,7 @@ export default function ResultPage() {
               <ResultCriteria items={result.criteria} />
               <div className="rounded-xl bg-[#fff4f6] p-3 text-sm leading-6 text-[#712235]">{result.disclaimer}</div>
               <p className="text-xs text-[var(--muted)]">
-                Generated at: {new Date(result.generatedAt).toLocaleString()} | Source: rule-based engine
+                Generated at: {new Date(result.generatedAt).toLocaleString()} | Source: {sourceLabel}
               </p>
             </div>
           ) : null}

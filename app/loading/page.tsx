@@ -12,16 +12,89 @@ function encodeReason(message: string): string {
   return encodeURIComponent(message);
 }
 
+function isNoAudiogramMessage(value: unknown): boolean {
+  return typeof value === "string" && /no audiogram provided/i.test(value);
+}
+
+type N8nWebhookResult = {
+  rizivCriteriaMatched?: boolean;
+  leftPTAUsed?: number;
+  rightPTAUsed?: number;
+  thresholdChecked?: number;
+  recommendation?: string;
+  extractedCriteriaSummary?: string;
+  checkedAt?: string;
+};
+
+function isN8nWebhookResult(value: unknown): value is N8nWebhookResult {
+  return Boolean(value && typeof value === "object" && ("rizivCriteriaMatched" in value || "recommendation" in value || "checkedAt" in value));
+}
+
+function buildWebhookResult(entry: N8nWebhookResult, fallbackInput: Parameters<typeof analyzeHearingLoss>[0]): AnalysisResult {
+  const matched = Boolean(entry.rizivCriteriaMatched);
+  const recommendation = entry.recommendation || entry.extractedCriteriaSummary || (matched ? "RIZIV criteria met." : "RIZIV criteria not met.");
+  const thresholdChecked = typeof entry.thresholdChecked === "number" ? entry.thresholdChecked : 0;
+
+  return {
+    classification: matched ? "RIZIV criteria matched" : "RIZIV criteria not met",
+    summary: recommendation,
+    referralRecommended: matched,
+    referralReason: recommendation,
+    criteria: [
+      {
+        key: "WEBHOOK_VERDICT",
+        title: "Webhook verdict",
+        met: matched,
+        detail: matched ? "n8n returned rizivCriteriaMatched = true." : "n8n returned rizivCriteriaMatched = false.",
+      },
+      {
+        key: "THRESHOLD_CHECKED",
+        title: "Threshold checked",
+        met: typeof entry.thresholdChecked === "number",
+        detail: `Threshold checked: ${thresholdChecked} dB HL.`,
+      },
+      {
+        key: "LEFT_PTA_USED",
+        title: "Left PTA used",
+        met: typeof entry.leftPTAUsed === "number",
+        detail: `Left PTA used: ${entry.leftPTAUsed ?? 0} dB HL.`,
+      },
+      {
+        key: "RIGHT_PTA_USED",
+        title: "Right PTA used",
+        met: typeof entry.rightPTAUsed === "number",
+        detail: `Right PTA used: ${entry.rightPTAUsed ?? 0} dB HL.`,
+      },
+    ],
+    disclaimer: "Result returned by the n8n webhook.",
+    generatedAt: entry.checkedAt || new Date().toISOString(),
+    confidence: "webhook",
+    measurements: {
+      leftEar: [0, 0, 0, 0],
+      rightEar: [0, 0, 0, 0],
+      ptaLeft: typeof entry.leftPTAUsed === "number" ? entry.leftPTAUsed : 0,
+      ptaRight: typeof entry.rightPTAUsed === "number" ? entry.rightPTAUsed : 0,
+      ptaOverall: thresholdChecked,
+      age: fallbackInput.age,
+    },
+  };
+}
+
 export default function LoadingPage() {
   const router = useRouter();
 
   function normalizeWebhookResult(payload: unknown, fallbackInput: Parameters<typeof analyzeHearingLoss>[0]): AnalysisResult {
-    const candidate =
-      payload && typeof payload === "object"
-        ? (payload as { result?: unknown; analysis?: unknown; payload?: unknown })
-        : null;
+    const candidate = payload && typeof payload === "object" ? (payload as { result?: unknown; analysis?: unknown; payload?: unknown }) : null;
 
-    const possibleResult = candidate?.result ?? candidate?.analysis ?? payload;
+    const possibleResult = candidate?.result ?? candidate?.analysis ?? candidate?.payload ?? payload;
+
+    if (Array.isArray(possibleResult) && possibleResult.length > 0 && isN8nWebhookResult(possibleResult[0])) {
+      return buildWebhookResult(possibleResult[0], fallbackInput);
+    }
+
+    if (isN8nWebhookResult(possibleResult)) {
+      return buildWebhookResult(possibleResult, fallbackInput);
+    }
 
     if (possibleResult && typeof possibleResult === "object") {
       const result = possibleResult as Partial<AnalysisResult>;
@@ -74,11 +147,15 @@ export default function LoadingPage() {
           payload = null;
         }
 
+        if (isNoAudiogramMessage(payload?.payload) || isNoAudiogramMessage(payload?.error) || isNoAudiogramMessage(rawText)) {
+          throw new Error("No audiogram provided");
+        }
+
         if (!response.ok) {
           throw new Error(payload?.error || rawText || "Analysis failed.");
         }
 
-        const result = normalizeWebhookResult(payload?.payload, pending);
+        const result = normalizeWebhookResult(payload?.payload ?? payload, pending);
         saveAnalysisResult(result);
         clearPendingInput();
         router.replace("/result");
