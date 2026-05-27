@@ -1,0 +1,168 @@
+{
+  "name": "Analyze (reworked for SONARIS)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "analyze-reworked",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 250]
+    },
+    {
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "={{ $json[\"image_url\"] || $json[\"url\"] }}",
+        "options": {
+          "download": true,
+          "binaryPropertyName": "data"
+        }
+      },
+      "name": "Download Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [420, 250]
+    },
+    {
+      "parameters": {
+        "bucketName": "={{ $workflow.getStaticData('S3_BUCKET') || 'sonaris-media' }}",
+        "fileName": "={{ $json[\"fileName\"] || 'upload-' + Date.now() + '.jpg' }}",
+        "binaryDataPropertyName": "data",
+        "region": "={{ $workflow.getStaticData('AWS_REGION') || 'us-east-1' }}",
+        "options": {}
+      },
+      "name": "Upload to S3",
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [640, 250]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Build a payload for the LLM using input JSON and uploaded S3 url\nconst s3Bucket = $workflow.getStaticData('S3_BUCKET') || 'sonaris-media';\nconst s3Region = $workflow.getStaticData('AWS_REGION') || 'us-east-1';\nconst fileName = $json.fileName || 'upload-' + Date.now() + '.jpg';\nconst s3Url = `https://${s3Bucket}.s3.${s3Region}.amazonaws.com/${fileName}`;\nitems[0].json.s3_url = s3Url;\nitems[0].json.prompt = `Analyze the image at ${s3Url}. Return JSON with findings, timestamps and confidence.`;\nreturn items;"
+      },
+      "name": "Build LLM Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [860, 250]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "={{ $workflow.getStaticData('LLM_URL') || $json[\"llm_url\"] || 'https://api.your-llm.example/v1/generate' }}",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersJson": "=[{\"name\":\"Authorization\",\"value\":\"Bearer {{$workflow.getStaticData('LLM_API_KEY') || ''}}\"}]",
+        "bodyParametersJson": "={{ JSON.stringify({ prompt: $json.prompt, s3_url: $json.s3_url }) }}"
+      },
+      "name": "LLM Analyze",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1080, 250]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "analysis_results",
+        "columns": "id, s3_url, result_json, created_at",
+        "values": "={{ [null, $json.s3_url, JSON.stringify($json), 'now()'] }}",
+        "options": {}
+      },
+      "name": "Postgres Insert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1300, 250]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "result",
+              "value": "={{ $json }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Set Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1520, 250]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Download Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Image": {
+      "main": [
+        [
+          {
+            "node": "Upload to S3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to S3": {
+      "main": [
+        [
+          {
+            "node": "Build LLM Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build LLM Payload": {
+      "main": [
+        [
+          {
+            "node": "LLM Analyze",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Analyze": {
+      "main": [
+        [
+          {
+            "node": "Postgres Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Insert": {
+      "main": [
+        [
+          {
+            "node": "Set Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

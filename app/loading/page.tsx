@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { EarPulseLogo } from "@/components/EarPulseLogo";
+import { analyzeHearingLoss } from "@/lib/analysis";
 import { clearPendingInput, readPendingInput, saveAnalysisResult } from "@/lib/storage";
 import type { AnalysisResult } from "@/types/analysis";
 
@@ -14,6 +15,35 @@ function encodeReason(message: string): string {
 export default function LoadingPage() {
   const router = useRouter();
 
+  function normalizeWebhookResult(payload: unknown, fallbackInput: Parameters<typeof analyzeHearingLoss>[0]): AnalysisResult {
+    const candidate =
+      payload && typeof payload === "object"
+        ? (payload as { result?: unknown; analysis?: unknown; payload?: unknown })
+        : null;
+
+    const possibleResult = candidate?.result ?? candidate?.analysis ?? payload;
+
+    if (possibleResult && typeof possibleResult === "object") {
+      const result = possibleResult as Partial<AnalysisResult>;
+
+      if (
+        result.classification &&
+        result.summary &&
+        typeof result.referralRecommended === "boolean" &&
+        result.referralReason &&
+        Array.isArray(result.criteria) &&
+        result.disclaimer &&
+        result.generatedAt &&
+        result.confidence &&
+        result.measurements
+      ) {
+        return result as AnalysisResult;
+      }
+    }
+
+    return analyzeHearingLoss(fallbackInput);
+  }
+
   useEffect(() => {
     const pending = readPendingInput();
     if (!pending) {
@@ -23,10 +53,10 @@ export default function LoadingPage() {
 
     const run = async () => {
       try {
-        const response = await fetch("/api/analyze", {
+        const response = await fetch("/api/parse-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(pending),
+          body: JSON.stringify({ imageDataUrl: pending.imageDataUrl }),
         });
 
         if (!response.ok) {
@@ -34,7 +64,8 @@ export default function LoadingPage() {
           throw new Error(payload.error || "Analysis failed.");
         }
 
-        const result = (await response.json()) as AnalysisResult;
+        const payload = (await response.json()) as { success?: boolean; payload?: unknown };
+        const result = normalizeWebhookResult(payload?.payload, pending);
         saveAnalysisResult(result);
         clearPendingInput();
         router.replace("/result");

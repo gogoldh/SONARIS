@@ -88,8 +88,30 @@ body {
   }
 }
 
+@keyframes drawLine {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .logo-pulse {
   animation: pulseLogo 1.4s ease-in-out infinite;
+}
+
+.logo-draw {
+  animation: pulseLogo 3.5s ease-in-out 3.2s infinite;
+}
+
+.draw-line {
+  animation: drawLine 1.2s ease-out forwards;
 }
 
 @media print {

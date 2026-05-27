@@ -3,44 +3,27 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useState } from "react";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { clearAnalysisResult, savePendingInput } from "@/lib/storage";
-
-const FREQ_LABELS = ["500 Hz", "1000 Hz", "2000 Hz", "4000 Hz"];
-
-function toNumbers(values: string[]): number[] | undefined {
-  if (values.every((value) => value.trim() === "")) {
-    return undefined;
-  }
-
-  return values.map((value) => {
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-  });
-}
+import { RoboflowPrediction } from "@/lib/detection-utils";
 
 export default function ScanPage() {
   const router = useRouter();
-  const [fileName, setFileName] = useState("");
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
   const [age, setAge] = useState("");
-  const [left, setLeft] = useState(["", "", "", ""]);
-  const [right, setRight] = useState(["", "", "", ""]);
+  
   const [error, setError] = useState<string | null>(null);
-
-  const hasManualInput = useMemo(
-    () => [...left, ...right].some((value) => value.trim() !== ""),
-    [left, right],
-  );
+  const [parseLoading, setParseLoading] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
 
   const onFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setFileName(file.name);
     setError(null);
+    setParseError(null);
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -51,142 +34,147 @@ export default function ScanPage() {
     reader.readAsDataURL(file);
   };
 
-  const updateEarValue = (ear: "left" | "right", index: number, value: string) => {
-    const onlyNumber = value.replace(/[^0-9]/g, "");
-    if (ear === "left") {
-      setLeft((current) => current.map((item, i) => (i === index ? onlyNumber : item)));
+  const autoExtractRoboflow = async () => {
+    if (!imageDataUrl) {
+      setParseError("Please upload an image first.");
       return;
     }
-    setRight((current) => current.map((item, i) => (i === index ? onlyNumber : item)));
+
+    setParseLoading(true);
+    setParseError(null);
+
+    try {
+      const img = new window.Image();
+      img.src = imageDataUrl;
+      await new Promise((res, rej) => {
+        img.onload = () => res(true);
+        img.onerror = () => rej(new Error("Failed to load image"));
+      });
+
+      const width = img.naturalWidth || img.width || 1000;
+      const height = img.naturalHeight || img.height || 800;
+
+      const res = await fetch("/api/roboflow/infer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageDataUrl }),
+      });
+
+      const payload = await res.json();
+      if (!res.ok || !payload?.success) {
+        const msg = payload?.error || `Roboflow inference failed (${res.status})`;
+        setParseError(msg);
+        return;
+      }
+
+      const rf = payload.payload as { predictions?: any[] };
+      const predsRaw = rf?.predictions || [];
+
+      const preds: RoboflowPrediction[] = predsRaw.map((p: any) => ({
+        x: Number(p.x ?? p.center_x ?? 0),
+        y: Number(p.y ?? p.center_y ?? 0),
+        width: Number(p.width ?? p.w ?? 0),
+        height: Number(p.height ?? p.h ?? 0),
+        confidence: Number(p.confidence ?? p.score ?? 0),
+        class: String(p.class ?? p.label ?? "unknown"),
+      }));
+
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setParseError(`Auto-extract failed: ${message}`);
+    } finally {
+      setParseLoading(false);
+    }
   };
 
   const submitForAnalysis = () => {
-    if (!fileName) {
+    if (!imageDataUrl) {
       setError("Please upload or capture an audiogram image before continuing.");
       return;
     }
+
+    const fileName = `upload-${Date.now()}.png`;
 
     clearAnalysisResult();
     savePendingInput({
       fileName,
       imageDataUrl,
       age: age.trim() === "" ? undefined : Number(age),
-      thresholdsLeft: toNumbers(left),
-      thresholdsRight: toNumbers(right),
+      // thresholds removed: detection/extraction is handled server-side
     });
     router.push("/loading");
   };
 
   return (
     <div className="page-enter min-h-screen px-4 py-6 sm:px-6">
-      <div className="mx-auto w-full max-w-3xl space-y-4">
+      <div className="mx-auto w-full max-w-4xl space-y-4">
+        {/* Header */}
         <div className="card p-5 sm:p-6">
           <div className="mb-4 flex items-center justify-between gap-4">
-            <h1 className="text-2xl font-bold">Upload Audiogram</h1>
+            <h1 className="text-2xl font-bold">Audiogram Screening</h1>
             <Link href="/" className="text-sm font-semibold text-[var(--brand)] underline-offset-4 hover:underline">
               Back
             </Link>
           </div>
-
-          <p className="mb-4 text-sm leading-6 text-[var(--muted)]">
-            Add an audiogram scan. Optional threshold values improve reliability of this rule-based screening.
-          </p>
-
-          <label className="focus-ring flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border)] bg-[var(--surface-soft)] p-4 text-center">
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="sr-only"
-              onChange={onFile}
-            />
-
-            {imageDataUrl ? (
-              <Image
-                src={imageDataUrl}
-                alt="Uploaded audiogram"
-                width={800}
-                height={500}
-                unoptimized
-                className="max-h-52 w-auto rounded-xl object-contain"
-              />
-            ) : (
-              <>
-                <p className="text-base font-semibold">Tap to upload or scan</p>
-                <p className="mt-1 text-sm text-[var(--muted)]">JPG, PNG, HEIC (camera capture supported)</p>
-              </>
-            )}
-          </label>
-
-          <p className="mt-3 text-xs text-[var(--muted)]">{fileName || "No file selected"}</p>
+          <p className="text-sm leading-6 text-[var(--muted)]">Upload an audiogram image and the app will send it to the server for parsing.</p>
         </div>
 
-        <div className="card p-5 sm:p-6">
-          <h2 className="mb-2 text-xl font-bold">Optional Clinical Inputs</h2>
-          <p className="mb-4 text-sm text-[var(--muted)]">
-            Summary-first UX: if threshold fields are empty, Sonaris uses conservative estimated thresholds.
-          </p>
+        {/* Two-column layout: Image + Form */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Image Reference */}
+          <div className="card flex flex-col p-5 sm:p-6">
+            <h2 className="mb-3 text-sm font-bold">Audiogram Reference</h2>
+            <label className="focus-ring flex flex-1 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border)] bg-[var(--surface-soft)] p-3 text-center">
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                capture="environment"
+                className="sr-only"
+                onChange={onFile}
+              />
+              {imageDataUrl ? (
+                <Image
+                  src={imageDataUrl}
+                  alt="Uploaded audiogram"
+                  width={800}
+                  height={600}
+                  unoptimized
+                  className="max-h-96 w-auto rounded-xl object-contain"
+                />
+              ) : (
+                <>
+                  <p className="text-sm font-semibold">Tap to upload image</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">JPG, PNG, or PDF</p>
+                </>
+              )}
+            </label>
 
-          <label className="mb-4 block">
-            <span className="mb-2 block text-sm font-semibold">Age</span>
-            <input
-              className="focus-ring w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2"
-              type="number"
-              min={0}
-              max={120}
-              value={age}
-              onChange={(event) => setAge(event.target.value.replace(/[^0-9]/g, ""))}
-            />
-          </label>
+            <div className="mt-3 flex items-center justify-between">
+              <button
+                type="button"
+                className="rounded-md bg-[var(--brand)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                onClick={autoExtractRoboflow}
+                disabled={parseLoading || !imageDataUrl}
+              >
+                {parseLoading ? "Extracting..." : "Auto-extract (Roboflow)"}
+              </button>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <h3 className="mb-2 text-sm font-semibold">Left Ear (dB HL)</h3>
-              <div className="space-y-2">
-                {FREQ_LABELS.map((label, index) => (
-                  <label key={label} className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-[var(--muted)]">{label}</span>
-                    <input
-                      className="focus-ring w-24 rounded-lg border border-[var(--border)] px-2 py-1 text-right"
-                      inputMode="numeric"
-                      value={left[index]}
-                      onChange={(event) => updateEarValue("left", index, event.target.value)}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="mb-2 text-sm font-semibold">Right Ear (dB HL)</h3>
-              <div className="space-y-2">
-                {FREQ_LABELS.map((label, index) => (
-                  <label key={label} className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-[var(--muted)]">{label}</span>
-                    <input
-                      className="focus-ring w-24 rounded-lg border border-[var(--border)] px-2 py-1 text-right"
-                      inputMode="numeric"
-                      value={right[index]}
-                      onChange={(event) => updateEarValue("right", index, event.target.value)}
-                    />
-                  </label>
-                ))}
-              </div>
+              {parseError ? (
+                <p className="text-xs font-semibold text-[var(--warn)]">{parseError}</p>
+              ) : null}
             </div>
           </div>
+
+          {/* Manual thresholds removed — image upload triggers server-side parsing */}
         </div>
 
-        {error ? <p className="px-2 text-sm font-semibold text-[var(--brand)]">{error}</p> : null}
+        {error && <p className="px-2 text-sm font-semibold text-[var(--brand)]">{error}</p>}
 
         <div className="no-print card p-4">
           <PrimaryButton fullWidth onClick={submitForAnalysis}>
-            Analyze Scan
+            Analyze
           </PrimaryButton>
-          <p className="mt-2 text-center text-xs text-[var(--muted)]">
-            {hasManualInput
-              ? "Using provided thresholds for higher confidence analysis."
-              : "No thresholds entered: Sonaris will run estimated screening logic."}
-          </p>
+          <p className="mt-2 text-center text-xs text-[var(--muted)]">Upload an audiogram image to begin screening.</p>
         </div>
       </div>
     </div>
