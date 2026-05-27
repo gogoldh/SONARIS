@@ -18,6 +18,10 @@ function isNoAudiogramMessage(value: unknown): boolean {
   return typeof value === "string" && /no audiogram provided/i.test(value);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 export async function POST(request: Request) {
   try {
     const { imageDataUrl } = (await request.json()) as { imageDataUrl?: string };
@@ -54,23 +58,24 @@ export async function POST(request: Request) {
       });
 
       const text = await res.text().catch(() => "");
-      let payload: any = null;
+      let payload: unknown = null;
       try {
         payload = text ? JSON.parse(text) : null;
       } catch {
         payload = null;
       }
 
+      const payloadRecord = isRecord(payload) ? payload : null;
       const upstreamMessage =
         isNoAudiogramMessage(payload) ||
-        isNoAudiogramMessage(payload?.payload) ||
-        isNoAudiogramMessage(payload?.error)
+        isNoAudiogramMessage(payloadRecord?.payload) ||
+        isNoAudiogramMessage(payloadRecord?.error)
           ? "No audiogram provided"
           : null;
 
       if (upstreamMessage) {
         return NextResponse.json(
-          { success: false, error: upstreamMessage, upstream: { status: res.status, payload, text } },
+          { success: false, error: upstreamMessage, upstream: { status: res.status, payload: payloadRecord ?? payload, text } },
           { status: 422 },
         );
       }
@@ -78,14 +83,14 @@ export async function POST(request: Request) {
       if (!res.ok) {
         console.error("Webhook forward non-OK", { webhookUrl, status: res.status, payload, text });
         return NextResponse.json(
-          { success: false, error: `Webhook forward failed (${res.status})`, upstream: { status: res.status, payload, text } },
+          { success: false, error: `Webhook forward failed (${res.status})`, upstream: { status: res.status, payload: payloadRecord ?? payload, text } },
           { status: 502 },
         );
       }
 
       // Return whatever the webhook returned. If it uses a different shape,
       // consumers may need adjustment.
-      return NextResponse.json({ success: true, payload: payload ?? text }, { status: 200 });
+      return NextResponse.json({ success: true, payload: payloadRecord ?? payload ?? text }, { status: 200 });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Webhook request error", { webhookUrl, message, err });
