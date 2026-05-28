@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { EarPulseLogo } from "@/components/EarPulseLogo";
-import { analyzeHearingLoss } from "@/lib/analysis";
 import { clearPendingInput, readPendingInput, saveAnalysisResult } from "@/lib/storage";
 import type { AnalysisResult } from "@/types/analysis";
 
@@ -42,7 +41,7 @@ function isN8nWebhookResult(value: unknown): value is N8nWebhookResult {
   return Boolean(value && typeof value === "object" && ("rizivCriteriaMatched" in value || "recommendation" in value || "checkedAt" in value));
 }
 
-function buildWebhookResult(entry: N8nWebhookResult, fallbackInput: Parameters<typeof analyzeHearingLoss>[0]): AnalysisResult {
+function buildWebhookResult(entry: N8nWebhookResult, age?: number): AnalysisResult {
   const matched = Boolean(entry.rizivCriteriaMatched);
   const recommendation = entry.recommendation || entry.extractedCriteriaSummary || (matched ? "RIZIV criteria met." : "RIZIV criteria not met.");
   const thresholdChecked = typeof entry.thresholdChecked === "number" ? entry.thresholdChecked : 0;
@@ -87,7 +86,7 @@ function buildWebhookResult(entry: N8nWebhookResult, fallbackInput: Parameters<t
       ptaLeft: typeof entry.leftPTAUsed === "number" ? entry.leftPTAUsed : 0,
       ptaRight: typeof entry.rightPTAUsed === "number" ? entry.rightPTAUsed : 0,
       ptaOverall: thresholdChecked,
-      age: fallbackInput.age,
+      age,
     },
   };
 }
@@ -95,17 +94,17 @@ function buildWebhookResult(entry: N8nWebhookResult, fallbackInput: Parameters<t
 export default function LoadingPage() {
   const router = useRouter();
 
-  function normalizeWebhookResult(payload: unknown, fallbackInput: Parameters<typeof analyzeHearingLoss>[0]): AnalysisResult {
+  function normalizeWebhookResult(payload: unknown, age?: number): AnalysisResult | null {
     const candidate = payload && typeof payload === "object" ? (payload as { result?: unknown; analysis?: unknown; payload?: unknown }) : null;
 
     const possibleResult = candidate?.result ?? candidate?.analysis ?? candidate?.payload ?? payload;
 
     if (Array.isArray(possibleResult) && possibleResult.length > 0 && isN8nWebhookResult(possibleResult[0])) {
-      return buildWebhookResult(possibleResult[0], fallbackInput);
+      return buildWebhookResult(possibleResult[0], age);
     }
 
     if (isN8nWebhookResult(possibleResult)) {
-      return buildWebhookResult(possibleResult, fallbackInput);
+      return buildWebhookResult(possibleResult, age);
     }
 
     if (possibleResult && typeof possibleResult === "object") {
@@ -126,7 +125,7 @@ export default function LoadingPage() {
       }
     }
 
-    return analyzeHearingLoss(fallbackInput);
+    return null;
   }
 
   useEffect(() => {
@@ -171,7 +170,12 @@ export default function LoadingPage() {
           throw new Error(errorValue || rawText || "Analysis failed.");
         }
 
-        const result = normalizeWebhookResult(payloadValue ?? responsePayload, pending);
+        const result = normalizeWebhookResult(payloadValue ?? responsePayload, pending.age);
+
+        if (!result) {
+          throw new Error("N8N completed without returning an analysis result.");
+        }
+
         saveAnalysisResult(result);
         clearPendingInput();
         router.replace("/result");

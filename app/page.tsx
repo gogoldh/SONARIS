@@ -15,7 +15,7 @@ export default function Home() {
           <h1 className="font-display text-3xl sm:text-4xl">SONARIS</h1>
 
           <p className="font-body mx-auto mb-6 mt-3 max-w-md text-sm leading-relaxed text-[var(--muted)] sm:text-base">
-            Krijg een duidelijke, gestandaardiseerde interpretatie en ondersteun je doorverwijzing naar gespecialiseerde zorg.
+            Professional audiogram review and streamlined specialist referral support.
           </p>
 
           <Link href="/scan" className="mx-auto block w-full max-w-xs sm:max-w-sm">
@@ -23,8 +23,8 @@ export default function Home() {
           </Link>
 
           <div className="mt-6 text-xs leading-relaxed text-[var(--muted)] sm:text-sm">
-            <p className="font-heading mb-1 underline decoration-[var(--brand)] underline-offset-4">Meer info over de app</p>
-            <p className="font-body">Ondersteun je audiogram-interpretatie met gestandaardiseerde criteria.</p>
+            <Link href="/about" className="font-heading mb-1 underline decoration-[var(--brand)] underline-offset-4">About this app</Link>
+            <p className="font-body">Support your audiogram interpretation with standardized screening criteria.</p>
           </div>
         </div>
       </main>
