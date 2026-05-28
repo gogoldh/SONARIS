@@ -12,7 +12,6 @@ export default function ScanPage() {
   const router = useRouter();
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
   const [age, setAge] = useState("");
-  
   const [error, setError] = useState<string | null>(null);
 
   const onFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -20,7 +19,6 @@ export default function ScanPage() {
     if (!file) return;
 
     setError(null);
-
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
@@ -67,30 +65,42 @@ export default function ScanPage() {
           {/* Image Reference */}
           <div className="scan-panel card flex flex-col p-5 sm:p-6">
             <h2 className="mb-3 text-sm font-bold sm:text-base">Audiogram Reference</h2>
-            <label className="focus-ring flex min-h-[16rem] flex-1 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border)] bg-[var(--surface-soft)] p-3 text-center sm:min-h-[22rem]">
-              <input
-                type="file"
-                accept="image/*,.pdf"
-                capture="environment"
-                className="sr-only"
-                onChange={onFile}
-              />
-              {imageDataUrl ? (
-                <Image
-                  src={imageDataUrl}
-                  alt="Uploaded audiogram"
-                  width={800}
-                  height={600}
-                  unoptimized
-                  className="max-h-[21rem] w-auto rounded-xl object-contain sm:max-h-[27rem]"
-                />
-              ) : (
-                <>
-                  <p className="text-sm font-semibold sm:text-base">Tap to upload image</p>
-                  <p className="mt-1 text-xs text-[var(--muted)] sm:text-sm">JPG, PNG, or PDF</p>
-                </>
-              )}
-            </label>
+            <div className="relative">
+              <input id="camera-input" type="file" accept="image/*" capture="environment" className="sr-only" onChange={onFile} />
+              <input id="file-input" type="file" accept="image/*,.pdf" className="sr-only" onChange={onFile} />
+
+              <div className="focus-ring flex min-h-[16rem] flex-1 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border)] bg-[var(--surface-soft)] p-3 text-center sm:min-h-[22rem]">
+                {imageDataUrl ? (
+                  <Image
+                    src={imageDataUrl}
+                    alt="Uploaded audiogram"
+                    width={800}
+                    height={600}
+                    unoptimized
+                    className="max-h-[21rem] w-auto rounded-xl object-contain sm:max-h-[27rem]"
+                  />
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold sm:text-base">Tap to add image</p>
+                    <p className="mt-1 text-xs text-[var(--muted)] sm:text-sm">Take a photo or upload JPG, PNG, or PDF</p>
+                    <div className="mt-4 flex w-full max-w-xs flex-col gap-2">
+                      <label
+                        htmlFor="camera-input"
+                        className="cursor-pointer rounded-full bg-[var(--brand)] px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                      >
+                        Take photo
+                      </label>
+                      <label
+                        htmlFor="file-input"
+                        className="cursor-pointer rounded-full border border-[var(--border)] bg-white px-4 py-3 text-sm font-semibold text-[var(--foreground)] shadow-sm"
+                      >
+                        Upload file
+                      </label>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
 
             <p className="mt-3 text-xs text-[var(--muted)] sm:text-sm">
               The uploaded image will be analyzed after you click Analyze.
