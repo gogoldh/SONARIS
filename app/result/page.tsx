@@ -12,6 +12,10 @@ export default function ResultPage() {
   const router = useRouter();
   const [showDetails, setShowDetails] = useState(false);
   const result = useMemo(() => readAnalysisResult(), []);
+  const generatedAtLabel = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(result?.generatedAt ?? Date.now()));
 
   const confidenceLabel =
     result?.confidence === "provided-thresholds"
@@ -94,7 +98,7 @@ export default function ResultPage() {
               <ResultCriteria items={result.criteria} />
               <div className="rounded-xl bg-[#fff4f6] p-3 text-sm leading-6 text-[#712235]">{result.disclaimer}</div>
               <p className="text-xs text-[var(--muted)]">
-                Generated at: {new Date(result.generatedAt).toLocaleString()} | Source: {sourceLabel}
+                Generated at: {generatedAtLabel} | Source: {sourceLabel}
               </p>
             </div>
           ) : null}
