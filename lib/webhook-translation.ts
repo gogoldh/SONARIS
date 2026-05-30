@@ -16,6 +16,28 @@ export function translateWebhookText(value: string): string {
   return WEBHOOK_TRANSLATIONS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), value);
 }
 
+function normalizeWebhookMeasurements(result: AnalysisResult): AnalysisResult["measurements"] {
+  const { ptaLeft, ptaRight, ptaOverall } = result.measurements;
+
+  const fallbackOverall =
+    ptaOverall > 0
+      ? ptaOverall
+      : ptaLeft > 0 && ptaRight > 0
+        ? Math.round((((ptaLeft + ptaRight) / 2) * 10)) / 10
+        : ptaLeft > 0
+          ? ptaLeft
+          : ptaRight > 0
+            ? ptaRight
+            : 0;
+
+  return {
+    ...result.measurements,
+    ptaLeft: ptaLeft > 0 ? ptaLeft : fallbackOverall,
+    ptaRight: ptaRight > 0 ? ptaRight : fallbackOverall,
+    ptaOverall: fallbackOverall,
+  };
+}
+
 export function translateAnalysisResult(result: AnalysisResult): AnalysisResult {
   return {
     ...result,
@@ -28,5 +50,6 @@ export function translateAnalysisResult(result: AnalysisResult): AnalysisResult 
       title: translateWebhookText(item.title),
       detail: translateWebhookText(item.detail),
     })),
+    measurements: normalizeWebhookMeasurements(result),
   };
 }

@@ -43,7 +43,20 @@ function buildWebhookResult(entry: N8nWebhookResult, age?: number): AnalysisResu
   const recommendation = translateWebhookText(
     entry.recommendation || entry.extractedCriteriaSummary || (matched ? "RIZIV criteria met." : "RIZIV criteria not met."),
   );
-  const thresholdChecked = typeof entry.thresholdChecked === "number" ? entry.thresholdChecked : 0;
+  const ptaLeftUsed = typeof entry.leftPTAUsed === "number" ? entry.leftPTAUsed : undefined;
+  const ptaRightUsed = typeof entry.rightPTAUsed === "number" ? entry.rightPTAUsed : undefined;
+  const thresholdChecked =
+    typeof entry.thresholdChecked === "number"
+      ? entry.thresholdChecked
+      : typeof ptaLeftUsed === "number" && typeof ptaRightUsed === "number"
+        ? Math.round((((ptaLeftUsed + ptaRightUsed) / 2) * 10)) / 10
+        : typeof ptaLeftUsed === "number"
+          ? ptaLeftUsed
+          : typeof ptaRightUsed === "number"
+            ? ptaRightUsed
+            : 0;
+  const resolvedLeftPta = ptaLeftUsed ?? thresholdChecked;
+  const resolvedRightPta = ptaRightUsed ?? thresholdChecked;
 
   return {
     classification: matched ? "RIZIV criteria matched" : "RIZIV criteria not met",
@@ -60,20 +73,20 @@ function buildWebhookResult(entry: N8nWebhookResult, age?: number): AnalysisResu
       {
         key: "THRESHOLD_CHECKED",
         title: "Threshold checked",
-        met: typeof entry.thresholdChecked === "number",
+        met: typeof entry.thresholdChecked === "number" || thresholdChecked > 0,
         detail: `Threshold checked: ${thresholdChecked} dB HL.`,
       },
       {
         key: "LEFT_PTA_USED",
         title: "Left PTA used",
-        met: typeof entry.leftPTAUsed === "number",
-        detail: `Left PTA used: ${entry.leftPTAUsed ?? 0} dB HL.`,
+        met: typeof ptaLeftUsed === "number" || thresholdChecked > 0,
+        detail: `Left PTA used: ${resolvedLeftPta} dB HL.`,
       },
       {
         key: "RIGHT_PTA_USED",
         title: "Right PTA used",
-        met: typeof entry.rightPTAUsed === "number",
-        detail: `Right PTA used: ${entry.rightPTAUsed ?? 0} dB HL.`,
+        met: typeof ptaRightUsed === "number" || thresholdChecked > 0,
+        detail: `Right PTA used: ${resolvedRightPta} dB HL.`,
       },
     ],
     disclaimer: "Result returned by the n8n webhook.",
@@ -82,8 +95,8 @@ function buildWebhookResult(entry: N8nWebhookResult, age?: number): AnalysisResu
     measurements: {
       leftEar: [0, 0, 0, 0],
       rightEar: [0, 0, 0, 0],
-      ptaLeft: typeof entry.leftPTAUsed === "number" ? entry.leftPTAUsed : 0,
-      ptaRight: typeof entry.rightPTAUsed === "number" ? entry.rightPTAUsed : 0,
+      ptaLeft: resolvedLeftPta,
+      ptaRight: resolvedRightPta,
       ptaOverall: thresholdChecked,
       age,
     },
