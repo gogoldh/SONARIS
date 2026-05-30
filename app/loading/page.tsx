@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import { EarPulseLogo } from "@/components/EarPulseLogo";
 import { clearPendingInput, readPendingInput, saveAnalysisResult } from "@/lib/storage";
+import { translateAnalysisResult, translateWebhookText } from "@/lib/webhook-translation";
 import type { AnalysisResult } from "@/types/analysis";
 
 function encodeReason(message: string): string {
@@ -13,10 +14,6 @@ function encodeReason(message: string): string {
 
 function isNoAudiogramMessage(value: unknown): boolean {
   return typeof value === "string" && /no audiogram provided/i.test(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 type N8nWebhookResult = {
@@ -43,7 +40,9 @@ function isN8nWebhookResult(value: unknown): value is N8nWebhookResult {
 
 function buildWebhookResult(entry: N8nWebhookResult, age?: number): AnalysisResult {
   const matched = Boolean(entry.rizivCriteriaMatched);
-  const recommendation = entry.recommendation || entry.extractedCriteriaSummary || (matched ? "RIZIV criteria met." : "RIZIV criteria not met.");
+  const recommendation = translateWebhookText(
+    entry.recommendation || entry.extractedCriteriaSummary || (matched ? "RIZIV criteria met." : "RIZIV criteria not met."),
+  );
   const thresholdChecked = typeof entry.thresholdChecked === "number" ? entry.thresholdChecked : 0;
 
   return {
@@ -121,7 +120,7 @@ export default function LoadingPage() {
         result.confidence &&
         result.measurements
       ) {
-        return result as AnalysisResult;
+        return translateAnalysisResult(result as AnalysisResult);
       }
     }
 
