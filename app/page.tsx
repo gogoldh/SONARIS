@@ -5,11 +5,11 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 
 export default function Home() {
   return (
-    <div className="page-enter flex min-h-screen flex-col items-center justify-center px-4 py-8 sm:px-6">
-      <main className="app-shell w-full max-w-xl text-center">
-        <div className="card px-6 py-8 sm:px-10 sm:py-10">
+    <div className="page-enter flex min-h-[100svh] w-full items-center justify-center px-4 py-4 sm:px-6">
+      <main className="w-full max-w-xl">
+        <div className="card mx-auto w-full px-6 py-8 text-center sm:px-10 sm:py-10">
           <div className="mx-auto mb-8 flex justify-center">
-          <EarPulseLogo size="lg" />
+            <EarPulseLogo size="lg" />
           </div>
 
           <h1 className="font-display text-3xl sm:text-4xl">SONARIS</h1>
