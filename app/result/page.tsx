@@ -10,6 +10,12 @@ import { ResultCriteria } from "@/components/ResultCriteria";
 import { clearAnalysisResult, readAnalysisResult } from "@/lib/storage";
 import { translateAnalysisResult } from "@/lib/webhook-translation";
 
+function buildPdfFileName(): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const suffix = Math.random().toString(36).slice(2, 6);
+  return `sonaris-analysis-report-${stamp}-${suffix}.pdf`;
+}
+
 export default function ResultPage() {
   const router = useRouter();
   const [showDetails, setShowDetails] = useState(false);
@@ -131,7 +137,7 @@ export default function ResultPage() {
       const disclaimerLines = doc.splitTextToSize(result.disclaimer, contentWidth);
       doc.text(disclaimerLines, margin, y);
 
-      doc.save("sonaris-analysis-report.pdf");
+      doc.save(buildPdfFileName());
     } finally {
       setIsExporting(false);
     }
