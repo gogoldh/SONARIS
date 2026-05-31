@@ -23,6 +23,10 @@ const displayFont = Anton({
 export const metadata: Metadata = {
   title: "Sonaris",
   description: "Decision-support for hearing-loss triage from audiogram scans.",
+  icons: {
+    icon: "/media/favicon2.svg",
+    apple: "/media/favicon2.svg",
+  },
 };
 
 export default function RootLayout({
