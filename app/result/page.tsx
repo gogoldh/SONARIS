@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useSyncExternalStore, useState } from "react";
 import { jsPDF } from "jspdf";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -16,12 +16,49 @@ function buildPdfFileName(): string {
   return `sonaris-analysis-report-${stamp}-${suffix}.pdf`;
 }
 
+let cachedAnalysisSnapshotRaw: string | null = null;
+let cachedAnalysisSnapshotResult: ReturnType<typeof translateAnalysisResult> | null = null;
+
+function subscribeToAnalysisResult() {
+  return () => {};
+}
+
+function getClientAnalysisResult() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const rawResult = window.sessionStorage.getItem("sonaris.analysis.result");
+  if (rawResult === cachedAnalysisSnapshotRaw) {
+    return cachedAnalysisSnapshotResult;
+  }
+
+  cachedAnalysisSnapshotRaw = rawResult;
+
+  if (!rawResult) {
+    cachedAnalysisSnapshotResult = null;
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawResult) as ReturnType<typeof readAnalysisResult> extends infer T ? NonNullable<T> : never;
+    cachedAnalysisSnapshotResult = translateAnalysisResult(parsed);
+    return cachedAnalysisSnapshotResult;
+  } catch {
+    cachedAnalysisSnapshotResult = null;
+    return null;
+  }
+}
+
+function getServerAnalysisResult() {
+  return null;
+}
+
 export default function ResultPage() {
   const router = useRouter();
   const [showDetails, setShowDetails] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const storedResult = useMemo(() => readAnalysisResult(), []);
-  const result = useMemo(() => (storedResult ? translateAnalysisResult(storedResult) : null), [storedResult]);
+  const result = useSyncExternalStore(subscribeToAnalysisResult, getClientAnalysisResult, getServerAnalysisResult);
 
   const confidenceLabel =
     result?.confidence === "provided-thresholds"
@@ -142,6 +179,22 @@ export default function ResultPage() {
       setIsExporting(false);
     }
   };
+
+  if (!result) {
+    return (
+      <div className="page-enter flex min-h-screen items-center justify-center px-4 py-8 sm:px-6">
+        <main className="card w-full max-w-md px-6 py-8 text-center sm:px-8 sm:py-10">
+          <div className="mb-4 flex flex-col items-center">
+            <div className="h-32 w-52 animate-pulse rounded-2xl bg-[var(--surface-soft)]" aria-hidden />
+          </div>
+          <h1 className="text-2xl font-bold sm:text-3xl">Loading result...</h1>
+          <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--muted)] sm:text-[15px]">
+            Restoring your analysis report.
+          </p>
+        </main>
+      </div>
+    );
+  }
 
   if (!result) {
     return (
