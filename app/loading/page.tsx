@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { EarPulseLogo } from "@/components/EarPulseLogo";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import {
   buildAnalysisResultFromRecord,
   extractAnalysisRecordId,
@@ -132,6 +133,7 @@ export default function LoadingPage() {
   const router = useRouter();
   const [tipIndex, setTipIndex] = useState(0);
   const [statusText, setStatusText] = useState("Sending image to n8n...");
+  const [uiError, setUiError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -157,6 +159,7 @@ export default function LoadingPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ imageDataUrl: pending.imageDataUrl }),
+          cache: "no-store",
         });
 
         const payload = (await response.json()) as ParseImageResponse;
@@ -191,7 +194,10 @@ export default function LoadingPage() {
         const maxAttempts = 90;
 
         for (let attempt = 0; attempt < maxAttempts && active; attempt += 1) {
-          const statusResponse = await fetch(`/api/analysis-status?id=${recordId}`, { cache: "no-store" });
+          const statusResponse = await fetch(`/api/analysis-status?id=${recordId}&t=${Date.now()}`, {
+            cache: "no-store",
+            headers: { "Cache-Control": "no-store" },
+          });
           const statusPayload = (await statusResponse.json()) as AnalysisStatusResponse;
 
           if (!statusResponse.ok) {
@@ -199,9 +205,8 @@ export default function LoadingPage() {
           }
 
           // If backend decided the record is ready but contains an error (e.g. low confidence or invalid audiogram), show it
-          if (statusPayload.ready && (statusPayload as any).error) {
-            const msg = (statusPayload as any).error as string;
-            router.replace(`/error?reason=${encodeReason(msg)}`);
+          if (statusPayload.ready && statusPayload.error) {
+            setUiError(statusPayload.error);
             return;
           }
 
@@ -224,7 +229,7 @@ export default function LoadingPage() {
         }
 
         const reason = parseErrorMessage(error, "Unexpected analysis error");
-        router.replace(`/error?reason=${encodeReason(reason)}`);
+        setUiError(reason);
       }
     };
 
@@ -244,6 +249,29 @@ export default function LoadingPage() {
   }, []);
 
   const currentTip = LOADING_TIPS[tipIndex];
+
+  if (uiError) {
+    return (
+      <div className="page-enter flex min-h-screen items-center justify-center px-4 py-8 sm:px-6">
+        <main className="card w-full max-w-md px-6 py-8 text-center sm:px-8 sm:py-10">
+          <div className="mb-3 flex justify-center">
+            <EarPulseLogo size="md" />
+          </div>
+          <h1 className="mb-2 text-2xl font-bold sm:text-3xl">That did not sound right.</h1>
+          <p className="mb-6 text-sm leading-6 text-[var(--muted)] sm:text-[15px]">{uiError}</p>
+          <PrimaryButton
+            fullWidth
+            onClick={() => {
+              clearPendingInput();
+              router.replace("/scan");
+            }}
+          >
+            Try again
+          </PrimaryButton>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="page-enter flex min-h-screen items-center justify-center px-4 py-8 sm:px-6">

@@ -101,6 +101,57 @@ function extractRecordIdFromPayload(payload: unknown): number | null {
   return null;
 }
 
+function extractRecordIdFromN8nResponse(responsePayload: unknown): number | null {
+  if (!responsePayload) {
+    return null;
+  }
+
+  if (Array.isArray(responsePayload)) {
+    for (const item of responsePayload) {
+      const recordId = extractRecordIdFromN8nResponse(item);
+      if (recordId !== null) {
+        return recordId;
+      }
+    }
+    return null;
+  }
+
+  if (typeof responsePayload === "string") {
+    const trimmed = responsePayload.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    try {
+      return extractRecordIdFromN8nResponse(JSON.parse(trimmed));
+    } catch {
+      return null;
+    }
+  }
+
+  if (!isRecord(responsePayload)) {
+    return null;
+  }
+
+  const directTopLevelId = toRecordId(responsePayload.id);
+  if (directTopLevelId !== null) {
+    return directTopLevelId;
+  }
+
+  const payload = responsePayload.payload;
+  if (Array.isArray(payload) && payload.length > 0) {
+    const firstItem = payload[0];
+    if (isRecord(firstItem)) {
+      const nestedId = toRecordId(firstItem.id);
+      if (nestedId !== null) {
+        return nestedId;
+      }
+    }
+  }
+
+  return extractRecordIdFromPayload(responsePayload);
+}
+
 export async function POST(request: Request) {
   try {
     const { imageDataUrl } = (await request.json()) as { imageDataUrl?: string };
@@ -165,10 +216,15 @@ export async function POST(request: Request) {
       }
 
       const responsePayload = payloadRecord ?? payload ?? text;
-      const recordId = extractRecordIdFromPayload(responsePayload);
+      const recordId = extractRecordIdFromN8nResponse(responsePayload);
 
       if (!recordId) {
-        console.error("Webhook returned no record id", { webhookUrl, payload: responsePayload, text });
+        console.error("Webhook returned no record id", {
+          webhookUrl,
+          status: res.status,
+          payload: responsePayload,
+          rawText: text,
+        });
         return NextResponse.json(
           { success: false, error: "N8N returned no record id." },
           { status: 502 },

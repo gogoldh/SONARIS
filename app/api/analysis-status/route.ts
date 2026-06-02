@@ -7,6 +7,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SUPABASE_TABLE = "scans_research";
+const INVALID_AUDIOGRAM_ERROR = "Dit is geen geldig of scherp genoeg audiogram.";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return NextResponse.json(body, { status, headers: NO_STORE_HEADERS });
+}
 
 function createSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -41,7 +52,7 @@ export async function GET(request: Request) {
     const id = parseId(url.searchParams.get("id"));
 
     if (id === null) {
-      return NextResponse.json({ ready: false }, { status: 400 });
+      return jsonResponse({ ready: false }, 400);
     }
 
     const supabase = createSupabaseClient();
@@ -62,7 +73,7 @@ export async function GET(request: Request) {
     }
 
     if (!data) {
-      return NextResponse.json({ ready: false }, { status: 200 });
+      return jsonResponse({ ready: false });
     }
 
     const ready = data.left_pta !== null && data.left_pta !== undefined;
@@ -87,30 +98,23 @@ export async function GET(request: Request) {
 
     // Error condition 2: sentinel -1 means "not a valid audiogram"
     if (conf === -1) {
-      return NextResponse.json({ ready: true, error: "Dit is geen geldig audiogram." }, { status: 200 });
+      return jsonResponse({ ready: true, error: INVALID_AUDIOGRAM_ERROR });
     }
 
-    // If left PTA is still null, but ai_confidence indicates low confidence (<65%), return an explicit error
-    if ((data.left_pta === null || data.left_pta === undefined) && conf !== null && conf > 0 && conf < 65) {
-      const rounded = Math.round(conf);
-      return NextResponse.json(
-        {
-          ready: true,
-          error: `De AI-scan was niet betrouwbaar genoeg (confidence ${rounded}%). Upload aangeraden van een scherpere afbeelding.`,
-        },
-        { status: 200 },
-      );
+    // Error condition 1: low confidence should stop polling immediately.
+    if ((data.left_pta === null || data.left_pta === undefined) && conf !== null && conf < 65) {
+      return jsonResponse({ ready: true, error: INVALID_AUDIOGRAM_ERROR });
     }
 
     // Still processing: left_pta not set yet and no low-confidence error
     if (!ready) {
-      return NextResponse.json({ ready: false }, { status: 200 });
+      return jsonResponse({ ready: false });
     }
 
     // Success: left_pta is present
-    return NextResponse.json({ ready: true, data }, { status: 200 });
+    return jsonResponse({ ready: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown server error";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return jsonResponse({ success: false, error: message }, 500);
   }
 }
