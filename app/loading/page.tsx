@@ -122,6 +122,7 @@ type AnalysisStatusResponse = {
   success?: boolean;
   error?: string;
   ready?: boolean;
+  message?: string;
   data?: AnalysisRecord | null;
 };
 
@@ -215,7 +216,7 @@ export default function LoadingPage() {
             return;
           }
 
-          setStatusText(`Still processing record ${recordId}...`);
+          setStatusText(statusPayload.message || `Still processing record ${recordId}...`);
 
           if (attempt < maxAttempts - 1) {
             await sleep(2000);

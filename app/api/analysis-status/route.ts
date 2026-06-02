@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-import type { AnalysisRecord } from "@/lib/analysis-record";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const SUPABASE_TABLE = "scans_research";
-const INVALID_AUDIOGRAM_ERROR = "Dit is geen geldig of scherp genoeg audiogram.";
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -15,106 +13,106 @@ const NO_STORE_HEADERS = {
   Expires: "0",
 };
 
-function jsonResponse(body: unknown, status = 200) {
-  return NextResponse.json(body, { status, headers: NO_STORE_HEADERS });
-}
+function normalizeConfidence(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
 
-function createSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Supabase environment variables are not configured.");
+  if (typeof value === "number") {
+    if (value === -1) return -1;
+    return value >= 0 && value <= 1 ? value * 100 : value;
   }
 
-  return createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
-}
-
-function parseId(value: string | null): number | null {
-  if (!value) {
-    return null;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return null;
+    if (parsed === -1) return -1;
+    return parsed >= 0 && parsed <= 1 ? parsed * 100 : parsed;
   }
 
-  const numeric = Number(value);
-  return Number.isFinite(numeric) && numeric > 0 ? Math.trunc(numeric) : null;
+  return null;
 }
 
 export async function GET(request: Request) {
-  try {
-    const url = new URL(request.url);
-    const id = parseId(url.searchParams.get("id"));
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
 
-    if (id === null) {
-      return jsonResponse({ ready: false }, 400);
+  if (!id) {
+    return NextResponse.json(
+      { error: "Geen ID meegegeven" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json(
+        { ready: true, error: "Server crash: Supabase environment variables ontbreken." },
+        { headers: NO_STORE_HEADERS },
+      );
     }
 
-    const supabase = createSupabaseClient();
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: { persistSession: false },
+    });
+
+    const numericId = Number.parseInt(id, 10);
+
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      return NextResponse.json(
+        { ready: true, error: `Ongeldig ID ontvangen: ${id}` },
+        { headers: NO_STORE_HEADERS },
+      );
+    }
+
     const { data, error } = await supabase
       .from(SUPABASE_TABLE)
-      .select("id,image_url,left_pta,right_pta,ai_confidence,riziv_matched")
-      .eq("id", id)
-      .maybeSingle<AnalysisRecord>();
+      .select("left_pta,right_pta,riziv_matched,ai_confidence")
+      .eq("id", numericId)
+      .single();
 
     if (error) {
-      console.error("Supabase analysis-status lookup failed", {
-        id,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-      });
-      throw new Error(error.message);
+      return NextResponse.json(
+        {
+          ready: true,
+          error: `Supabase fout: ${error.message}. Code: ${error.code}. Verzocht ID: ${id}`,
+        },
+        { headers: NO_STORE_HEADERS },
+      );
     }
 
     if (!data) {
-      return jsonResponse({ ready: false });
+      return NextResponse.json(
+        { ready: true, error: `Record met ID ${id} niet gevonden in de database.` },
+        { headers: NO_STORE_HEADERS },
+      );
     }
 
-    const ready = data.left_pta !== null && data.left_pta !== undefined;
-
-    // Normalize ai_confidence to a percentage number when possible.
-    function normalizeConfidence(v: unknown): number | null {
-      if (v === null || v === undefined) return null;
-      if (typeof v === "number") {
-        if (v === -1) return -1;
-        return v >= 0 && v <= 1 ? v * 100 : v;
-      }
-      if (typeof v === "string") {
-        const n = Number(v);
-        if (Number.isNaN(n)) return null;
-        if (n === -1) return -1;
-        return n >= 0 && n <= 1 ? n * 100 : n;
-      }
-      return null;
+    const confidence = normalizeConfidence(data.ai_confidence);
+    if (confidence === -1 || (confidence !== null && confidence < 65 && data.left_pta === null)) {
+      return NextResponse.json(
+        {
+          ready: true,
+          error: `Dit is geen geldig of scherp genoeg audiogram (Confidence: ${data.ai_confidence}%).`,
+        },
+        { headers: NO_STORE_HEADERS },
+      );
     }
 
-    const conf = normalizeConfidence(data.ai_confidence);
-
-    // Error condition 2: sentinel -1 means "not a valid audiogram"
-    if (conf === -1) {
-      return jsonResponse({ ready: true, error: INVALID_AUDIOGRAM_ERROR });
+    if (data.left_pta !== null) {
+      return NextResponse.json({ ready: true, data }, { headers: NO_STORE_HEADERS });
     }
 
-    // Error condition 1: low confidence should stop polling immediately.
-    if ((data.left_pta === null || data.left_pta === undefined) && conf !== null && conf < 65) {
-      return jsonResponse({ ready: true, error: INVALID_AUDIOGRAM_ERROR });
-    }
-
-    // Still processing: left_pta not set yet and no low-confidence error
-    if (!ready) {
-      return jsonResponse({ ready: false });
-    }
-
-    // Success: left_pta is present
-    return jsonResponse({ ready: true, data });
+    return NextResponse.json(
+      { ready: false, message: "Nog aan het verwerken..." },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown server error";
-    return jsonResponse({ success: false, error: message }, 500);
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json(
+      { ready: true, error: `Server crash: ${message}` },
+      { headers: NO_STORE_HEADERS },
+    );
   }
 }
