@@ -18,8 +18,87 @@ function isNoAudiogramMessage(value: unknown): boolean {
   return typeof value === "string" && /no audiogram provided/i.test(value);
 }
 
+function containsNoAudiogram(value: unknown, depth = 0): boolean {
+  if (depth > 6) return false;
+  if (isNoAudiogramMessage(value)) return true;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (containsNoAudiogram(item, depth + 1)) return true;
+    }
+    return false;
+  }
+  if (value && typeof value === "object") {
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      try {
+        if (containsNoAudiogram((value as Record<string, unknown>)[key], depth + 1)) return true;
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return false;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function toRecordId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
+  }
+
+  return null;
+}
+
+function extractRecordIdFromPayload(payload: unknown): number | null {
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const recordId = extractRecordIdFromPayload(item);
+      if (recordId !== null) {
+        return recordId;
+      }
+    }
+
+    return null;
+  }
+
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    try {
+      return extractRecordIdFromPayload(JSON.parse(trimmed));
+    } catch {
+      return null;
+    }
+  }
+
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const directId = toRecordId(payload.id);
+  if (directId !== null) {
+    return directId;
+  }
+
+  const candidates = [payload.payload, payload.result, payload.analysis, payload.data];
+  for (const candidate of candidates) {
+    const recordId = extractRecordIdFromPayload(candidate);
+    if (recordId !== null) {
+      return recordId;
+    }
+  }
+
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -43,7 +122,7 @@ export async function POST(request: Request) {
     // the provided test webhook URL (use the user-provided test ID).
     const webhookUrl =
       process.env.PARSE_WEBHOOK_URL ||
-      "https://n8n-service-xs54.onrender.com/webhook/scan-audiogram";
+      "https://n8n-service-xs54.onrender.com/webhook-test/scan-audiogram";
 
     try {
       const { mimeType, buffer } = parseDataUrl(imageDataUrl);
@@ -66,12 +145,9 @@ export async function POST(request: Request) {
       }
 
       const payloadRecord = isRecord(payload) ? payload : null;
-      const upstreamMessage =
-        isNoAudiogramMessage(payload) ||
-        isNoAudiogramMessage(payloadRecord?.payload) ||
-        isNoAudiogramMessage(payloadRecord?.error)
-          ? "No audiogram provided"
-          : null;
+      const upstreamMessage = containsNoAudiogram(payload) || containsNoAudiogram(payloadRecord?.payload) || containsNoAudiogram(payloadRecord?.error)
+        ? "No audiogram provided"
+        : null;
 
       if (upstreamMessage) {
         return NextResponse.json(
@@ -88,9 +164,18 @@ export async function POST(request: Request) {
         );
       }
 
-      // Return whatever the webhook returned. If it uses a different shape,
-      // consumers may need adjustment.
-      return NextResponse.json({ success: true, payload: payloadRecord ?? payload ?? text }, { status: 200 });
+      const responsePayload = payloadRecord ?? payload ?? text;
+      const recordId = extractRecordIdFromPayload(responsePayload);
+
+      if (!recordId) {
+        console.error("Webhook returned no record id", { webhookUrl, payload: responsePayload, text });
+        return NextResponse.json(
+          { success: false, error: "N8N returned no record id." },
+          { status: 502 },
+        );
+      }
+
+      return NextResponse.json({ success: true, id: recordId }, { status: 200 });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Webhook request error", { webhookUrl, message, err });
