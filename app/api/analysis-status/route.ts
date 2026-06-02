@@ -31,6 +31,12 @@ function normalizeConfidence(value: unknown): number | null {
   return null;
 }
 
+function hasFilledValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim() !== "";
+  return true;
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
@@ -68,9 +74,11 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from(SUPABASE_TABLE)
-      .select("left_pta,right_pta,riziv_matched,ai_confidence")
+      .select("id,left_pta,right_pta,riziv_matched,ai_confidence,created_at,updated_at")
       .eq("id", numericId)
       .maybeSingle();
+
+    console.log("Live DB Data:", data);
 
     if (error) {
       return NextResponse.json(
@@ -100,7 +108,7 @@ export async function GET(request: Request) {
       );
     }
 
-    if (data.left_pta !== null) {
+    if (hasFilledValue(data.left_pta) || hasFilledValue(data.right_pta) || hasFilledValue(data.ai_confidence)) {
       return NextResponse.json({ ready: true, data }, { headers: NO_STORE_HEADERS });
     }
 

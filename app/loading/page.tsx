@@ -8,7 +8,6 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import {
   buildAnalysisResultFromRecord,
   extractAnalysisRecordId,
-  isAnalysisRecordReady,
   type AnalysisRecord,
 } from "@/lib/analysis-record";
 import { clearPendingInput, readPendingInput, saveAnalysisResult } from "@/lib/storage";
@@ -199,24 +198,25 @@ export default function LoadingPage() {
             cache: "no-store",
             headers: { "Cache-Control": "no-store" },
           });
-          const statusPayload = (await statusResponse.json()) as AnalysisStatusResponse;
+          const res = (await statusResponse.json()) as AnalysisStatusResponse;
+          console.log("Polling status response:", res);
 
           if (!statusResponse.ok) {
-            throw new Error(statusPayload.error || `Polling failed (${statusResponse.status}).`);
+            throw new Error(res.error || `Polling failed (${statusResponse.status}).`);
           }
 
           // If backend decided the record is ready but contains an error (e.g. low confidence or invalid audiogram), show it
-          if (statusPayload.ready && statusPayload.error) {
-            setUiError(statusPayload.error);
+          if (res.ready && res.error) {
+            setUiError(res.error);
             return;
           }
 
-          if (statusPayload.ready && statusPayload.data && isAnalysisRecordReady(statusPayload.data)) {
-            finalize(statusPayload.data);
+          if (res.ready === true || res.data) {
+            finalize(res.data ?? ({ id: recordId } satisfies AnalysisRecord));
             return;
           }
 
-          setStatusText(statusPayload.message || `Still processing record ${recordId}...`);
+          setStatusText(res.message || `Still processing record ${recordId}...`);
 
           if (attempt < maxAttempts - 1) {
             await sleep(2000);
