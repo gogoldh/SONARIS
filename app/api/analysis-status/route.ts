@@ -8,7 +8,7 @@ export const revalidate = 0;
 const SUPABASE_TABLE = "scans_research";
 
 const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  "Cache-Control": "no-store, no-cache, must-revalidate",
   Pragma: "no-cache",
   Expires: "0",
 };
@@ -70,7 +70,7 @@ export async function GET(request: Request) {
       .from(SUPABASE_TABLE)
       .select("left_pta,right_pta,riziv_matched,ai_confidence")
       .eq("id", numericId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       return NextResponse.json(
@@ -84,7 +84,7 @@ export async function GET(request: Request) {
 
     if (!data) {
       return NextResponse.json(
-        { ready: true, error: `Record met ID ${id} niet gevonden in de database.` },
+        { ready: false, message: "Record wordt geïnitialiseerd..." },
         { headers: NO_STORE_HEADERS },
       );
     }
