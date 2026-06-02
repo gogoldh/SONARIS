@@ -8,7 +8,7 @@ export const revalidate = 0;
 const SUPABASE_TABLE = "scans_research";
 
 const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate",
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
   Pragma: "no-cache",
   Expires: "0",
 };
@@ -29,12 +29,6 @@ function normalizeConfidence(value: unknown): number | null {
   }
 
   return null;
-}
-
-function hasFilledValue(value: unknown): boolean {
-  if (value === null || value === undefined) return false;
-  if (typeof value === "string") return value.trim() !== "";
-  return true;
 }
 
 export async function GET(request: Request) {
@@ -78,9 +72,8 @@ export async function GET(request: Request) {
       .eq("id", numericId)
       .maybeSingle();
 
-    console.log("Live DB Data:", data);
-
     if (error) {
+      console.error("Supabase leesfout:", error);
       return NextResponse.json(
         {
           ready: true,
@@ -89,6 +82,8 @@ export async function GET(request: Request) {
         { headers: NO_STORE_HEADERS },
       );
     }
+
+    console.log(`Huidige live data in DB voor ID ${id}:`, data);
 
     if (!data) {
       return NextResponse.json(
@@ -102,25 +97,27 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           ready: true,
-          error: `Dit is geen geldig of scherp genoeg audiogram (Confidence: ${data.ai_confidence}%).`,
+          error: "Dit is geen geldig of scherp genoeg audiogram.",
         },
         { headers: NO_STORE_HEADERS },
       );
     }
 
-    if (hasFilledValue(data.left_pta) || hasFilledValue(data.right_pta) || hasFilledValue(data.ai_confidence)) {
+    if (data.left_pta !== null || data.right_pta !== null || data.riziv_matched !== null) {
+      console.log("Data is binnen! Polling stopt.");
       return NextResponse.json({ ready: true, data }, { headers: NO_STORE_HEADERS });
     }
 
     return NextResponse.json(
-      { ready: false, message: "Nog aan het verwerken..." },
+      { ready: false, message: "AI is het audiogram aan het digitaliseren..." },
       { headers: NO_STORE_HEADERS },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error("Server crash in status route:", error);
     return NextResponse.json(
-      { ready: true, error: `Server crash: ${message}` },
-      { headers: NO_STORE_HEADERS },
+      { ready: true, error: message },
+      { status: 500, headers: NO_STORE_HEADERS },
     );
   }
 }
