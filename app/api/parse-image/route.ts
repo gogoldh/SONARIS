@@ -122,7 +122,7 @@ export async function POST(request: Request) {
     // the provided test webhook URL (use the user-provided test ID).
     const webhookUrl =
       process.env.PARSE_WEBHOOK_URL ||
-      "https://n8n-service-xs54.onrender.com/webhook-test/scan-audiogram";
+      "https://n8n-service-xs54.onrender.com/webhook/scan-audiogram";
 
     try {
       const { mimeType, buffer } = parseDataUrl(imageDataUrl);
