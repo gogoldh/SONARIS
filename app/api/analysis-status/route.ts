@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Dit dwingt Vercel om NOOIT de database-status te cachen
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -7,6 +8,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
 
+  // Ultra-strikte headers om caching in de browser en op Vercel te vernietigen
   const noCacheHeaders = {
     'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
     'Pragma': 'no-cache',
@@ -24,7 +26,7 @@ export async function GET(request: Request) {
       { auth: { persistSession: false } }
     );
 
-    // We trekken de VOLLEDIGE rij los uit de database om te zien wat n8n heeft gedaan
+    // Haal de rij op
     const { data, error } = await supabase
       .from('scans_research')
       .select('*') 
@@ -35,20 +37,16 @@ export async function GET(request: Request) {
       return Response.json({ ready: true, error: error.message }, { status: 500 });
     }
 
-    // Als de rij er niet is
     if (!data) {
-      return Response.json({ ready: false, message: 'Record zoeken in database...' }, { headers: noCacheHeaders });
+      return Response.json(
+        { ready: false, message: 'Record wordt geïnitialiseerd...' },
+        { headers: noCacheHeaders }
+      );
     }
 
-    // --- DIT GAAT JE HET ANTWOORD GEVEN ---
-    // Open je terminal/Vercel logs en kijk wat hier geprint wordt!
-    console.log("=== LIVE DATABASE CHECK VOOR ID " + id + " ===");
-    console.log(data);
-    console.log("================================================");
-
-    // CONTROLE: Is er AL iéts ingevuld door n8n?
-    // We checken of left_pta, right_pta, óf ai_confidence niet meer leeg zijn.
-    const isN8nKlaar = data.left_pta !== null || data.right_pta !== null || data.ai_confidence !== null;
+    // ROBUUSTE CHECK: Is er AL iéts ingevuld door n8n?
+    // We kijken of left_pta of right_pta niet meer null (of undefined/leeg) zijn.
+    const isN8nKlaar = data.left_pta !== null && data.left_pta !== undefined;
 
     if (isN8nKlaar) {
       return Response.json({
@@ -58,10 +56,10 @@ export async function GET(request: Request) {
       }, { headers: noCacheHeaders });
     }
 
-    // Als de rij er is, maar alle AI kolommen zijn nog exact null
+    // Als de rij bestaat, maar n8n heeft de cijfers er nog niet in gepusht
     return Response.json({
       ready: false,
-      message: 'Wachten op n8n database update...'
+      message: 'Wachten op database update...'
     }, { headers: noCacheHeaders });
 
   } catch (err: any) {
