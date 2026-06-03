@@ -221,12 +221,6 @@ export default function LoadingPage() {
         });
 
         const rawText = await response.text();
-        console.log("/api/parse-image response", {
-          ok: response.ok,
-          status: response.status,
-          statusText: response.statusText,
-          body: rawText,
-        });
 
         let payload: ParsedWebhookResponse | null = null;
         try {

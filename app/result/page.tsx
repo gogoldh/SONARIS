@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useSyncExternalStore, useState } from "react";
@@ -207,20 +206,6 @@ export default function ResultPage() {
           <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--muted)] sm:text-[15px]">
             Restoring your analysis report.
           </p>
-        </main>
-      </div>
-    );
-  }
-
-  if (!result) {
-    return (
-      <div className="page-enter flex min-h-screen items-center justify-center p-6">
-        <main className="card w-full max-w-md p-6 text-center">
-          <h1 className="mb-2 text-2xl font-bold">No result available</h1>
-          <p className="mb-5 text-sm text-[var(--muted)]">Please run a new scan to see analysis output.</p>
-          <Link href="/scan">
-            <PrimaryButton fullWidth>Go to scan</PrimaryButton>
-          </Link>
         </main>
       </div>
     );

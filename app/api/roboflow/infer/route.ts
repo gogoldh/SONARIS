@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
     const res = await fetch(endpoint, {
       method: "POST",
-      body: form as any,
+      body: form,
     });
 
     if (!res.ok) {
