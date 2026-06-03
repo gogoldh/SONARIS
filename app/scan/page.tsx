@@ -96,11 +96,6 @@ export default function ScanPage() {
       return;
     }
 
-    if (isCropping) {
-      setError("Use crop or skip crop before continuing.");
-      return;
-    }
-
     const fileName = `upload-${Date.now()}.png`;
 
     clearAnalysisResult();
