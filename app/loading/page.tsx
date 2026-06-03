@@ -4,13 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { EarPulseLogo } from "@/components/EarPulseLogo";
-import { PrimaryButton } from "@/components/PrimaryButton";
-import {
-  buildAnalysisResultFromRecord,
-  extractAnalysisRecordId,
-  type AnalysisRecord,
-} from "@/lib/analysis-record";
 import { clearPendingInput, readPendingInput, saveAnalysisResult } from "@/lib/storage";
+import { translateAnalysisResult, translateWebhookText } from "@/lib/webhook-translation";
+import type { AnalysisResult } from "@/types/analysis";
 
 function encodeReason(message: string): string {
   return encodeURIComponent(message);
@@ -18,31 +14,6 @@ function encodeReason(message: string): string {
 
 function isNoAudiogramMessage(value: unknown): boolean {
   return typeof value === "string" && /no audiogram provided/i.test(value);
-}
-
-function containsNoAudiogram(value: unknown, depth = 0): boolean {
-  if (depth > 6) return false;
-  if (isNoAudiogramMessage(value)) return true;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      if (containsNoAudiogram(item, depth + 1)) return true;
-    }
-    return false;
-  }
-  if (value && typeof value === "object") {
-    for (const k of Object.keys(value as Record<string, unknown>)) {
-      try {
-        if (containsNoAudiogram((value as Record<string, unknown>)[k], depth + 1)) return true;
-      } catch {
-        // ignore
-      }
-    }
-  }
-  return false;
-}
-
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 type LoadingTip = {
@@ -109,136 +80,189 @@ const LOADING_TIPS: LoadingTip[] = [
   },
 ];
 
-type ParseImageResponse = {
+type N8nWebhookResult = {
+  rizivCriteriaMatched?: boolean;
+  leftPTAUsed?: number;
+  rightPTAUsed?: number;
+  thresholdChecked?: number;
+  recommendation?: string;
+  extractedCriteriaSummary?: string;
+  checkedAt?: string;
+};
+
+type ParsedWebhookResponse = {
   success?: boolean;
   error?: string;
-  id?: number | string | null;
-  recordId?: number | string | null;
   payload?: unknown;
+  result?: unknown;
+  analysis?: unknown;
 };
 
-type AnalysisStatusResponse = {
-  success?: boolean;
-  error?: string;
-  ready?: boolean;
-  message?: string;
-  data?: AnalysisRecord | null;
-};
+function isN8nWebhookResult(value: unknown): value is N8nWebhookResult {
+  return Boolean(value && typeof value === "object" && ("rizivCriteriaMatched" in value || "recommendation" in value || "checkedAt" in value));
+}
 
-function parseErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
+function buildWebhookResult(entry: N8nWebhookResult, age?: number): AnalysisResult {
+  const matched = Boolean(entry.rizivCriteriaMatched);
+  const recommendation = translateWebhookText(
+    entry.recommendation || entry.extractedCriteriaSummary || (matched ? "RIZIV criteria met." : "RIZIV criteria not met."),
+  );
+  const ptaLeftUsed = typeof entry.leftPTAUsed === "number" ? entry.leftPTAUsed : undefined;
+  const ptaRightUsed = typeof entry.rightPTAUsed === "number" ? entry.rightPTAUsed : undefined;
+  const thresholdChecked =
+    typeof entry.thresholdChecked === "number"
+      ? entry.thresholdChecked
+      : typeof ptaLeftUsed === "number" && typeof ptaRightUsed === "number"
+        ? Math.round((((ptaLeftUsed + ptaRightUsed) / 2) * 10)) / 10
+        : typeof ptaLeftUsed === "number"
+          ? ptaLeftUsed
+          : typeof ptaRightUsed === "number"
+            ? ptaRightUsed
+            : 0;
+  const resolvedLeftPta = ptaLeftUsed ?? thresholdChecked;
+  const resolvedRightPta = ptaRightUsed ?? thresholdChecked;
+
+  return {
+    classification: matched ? "RIZIV criteria matched" : "RIZIV criteria not met",
+    summary: recommendation,
+    referralRecommended: matched,
+    referralReason: recommendation,
+    criteria: [
+      {
+        key: "WEBHOOK_VERDICT",
+        title: "Webhook verdict",
+        met: matched,
+        detail: matched ? "n8n returned rizivCriteriaMatched = true." : "n8n returned rizivCriteriaMatched = false.",
+      },
+      {
+        key: "THRESHOLD_CHECKED",
+        title: "Threshold checked",
+        met: typeof entry.thresholdChecked === "number" || thresholdChecked > 0,
+        detail: `Threshold checked: ${thresholdChecked} dB HL.`,
+      },
+      {
+        key: "LEFT_PTA_USED",
+        title: "Left PTA used",
+        met: typeof ptaLeftUsed === "number" || thresholdChecked > 0,
+        detail: `Left PTA used: ${resolvedLeftPta} dB HL.`,
+      },
+      {
+        key: "RIGHT_PTA_USED",
+        title: "Right PTA used",
+        met: typeof ptaRightUsed === "number" || thresholdChecked > 0,
+        detail: `Right PTA used: ${resolvedRightPta} dB HL.`,
+      },
+    ],
+    disclaimer: "Result returned by the n8n webhook.",
+    generatedAt: entry.checkedAt || new Date().toISOString(),
+    confidence: "webhook",
+    measurements: {
+      leftEar: [0, 0, 0, 0],
+      rightEar: [0, 0, 0, 0],
+      ptaLeft: resolvedLeftPta,
+      ptaRight: resolvedRightPta,
+      ptaOverall: thresholdChecked,
+      age,
+    },
+  };
 }
 
 export default function LoadingPage() {
   const router = useRouter();
   const [tipIndex, setTipIndex] = useState(0);
-  const [statusText, setStatusText] = useState("Sending image to n8n...");
-  const [uiError, setUiError] = useState<string | null>(null);
+
+  function normalizeWebhookResult(payload: unknown, age?: number): AnalysisResult | null {
+    const candidate = payload && typeof payload === "object" ? (payload as { result?: unknown; analysis?: unknown; payload?: unknown }) : null;
+
+    const possibleResult = candidate?.result ?? candidate?.analysis ?? candidate?.payload ?? payload;
+
+    if (Array.isArray(possibleResult) && possibleResult.length > 0 && isN8nWebhookResult(possibleResult[0])) {
+      return buildWebhookResult(possibleResult[0], age);
+    }
+
+    if (isN8nWebhookResult(possibleResult)) {
+      return buildWebhookResult(possibleResult, age);
+    }
+
+    if (possibleResult && typeof possibleResult === "object") {
+      const result = possibleResult as Partial<AnalysisResult>;
+
+      if (
+        result.classification &&
+        result.summary &&
+        typeof result.referralRecommended === "boolean" &&
+        result.referralReason &&
+        Array.isArray(result.criteria) &&
+        result.disclaimer &&
+        result.generatedAt &&
+        result.confidence &&
+        result.measurements
+      ) {
+        return translateAnalysisResult(result as AnalysisResult);
+      }
+    }
+
+    return null;
+  }
 
   useEffect(() => {
-    let active = true;
-
     const pending = readPendingInput();
     if (!pending) {
       router.replace(`/error?reason=${encodeReason("No scan data found. Please try again.")}`);
       return;
     }
 
-    const finalize = (record: AnalysisRecord) => {
-      const result = buildAnalysisResultFromRecord(record, pending.age);
-      saveAnalysisResult(result);
-      clearPendingInput();
-      router.replace("/result");
-    };
-
     const run = async () => {
       try {
-        setStatusText("Sending image to n8n...");
-
         const response = await fetch("/api/parse-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ imageDataUrl: pending.imageDataUrl }),
-          cache: "no-store",
         });
 
-        const payload = (await response.json()) as ParseImageResponse;
+        const rawText = await response.text();
+        console.log("/api/parse-image response", {
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          body: rawText,
+        });
 
-        // If the webhook indicated no audiogram (possibly nested), stop immediately
-        if (containsNoAudiogram(payload) || containsNoAudiogram(payload.payload) || containsNoAudiogram(payload.error)) {
+        let payload: ParsedWebhookResponse | null = null;
+        try {
+          payload = rawText ? (JSON.parse(rawText) as ParsedWebhookResponse) : null;
+        } catch {
+          payload = null;
+        }
+
+        const responsePayload: ParsedWebhookResponse | null = payload;
+        const payloadValue = responsePayload?.payload;
+        const errorValue = responsePayload?.error;
+
+        if (isNoAudiogramMessage(payloadValue) || isNoAudiogramMessage(errorValue) || isNoAudiogramMessage(rawText)) {
           throw new Error("No audiogram provided");
         }
 
         if (!response.ok) {
-          throw new Error(payload.error || "Analysis failed.");
+          throw new Error(errorValue || rawText || "Analysis failed.");
         }
 
-        const rawId = payload.id ?? payload.recordId ?? payload.payload;
-        let recordId: number | null = null;
+        const result = normalizeWebhookResult(payloadValue ?? responsePayload, pending.age);
 
-        if (typeof rawId === "number") {
-          recordId = Number.isFinite(rawId) ? Math.trunc(rawId) : null;
-        } else if (typeof rawId === "string") {
-          const numeric = Number(rawId);
-          recordId = Number.isFinite(numeric) && numeric > 0 ? Math.trunc(numeric) : null;
-        } else {
-          recordId = extractAnalysisRecordId(rawId);
+        if (!result) {
+          throw new Error("N8N completed without returning an analysis result.");
         }
 
-        if (!recordId) {
-          throw new Error("N8N returned no record id to poll for.");
-        }
-
-        setStatusText(`Waiting for analysis record ${recordId} to be updated...`);
-
-        const maxAttempts = 90;
-
-        for (let attempt = 0; attempt < maxAttempts && active; attempt += 1) {
-          const statusResponse = await fetch(`/api/analysis-status?id=${recordId}&t=${Date.now()}`, {
-            cache: "no-store",
-            headers: { "Cache-Control": "no-store" },
-          });
-          const res = (await statusResponse.json()) as AnalysisStatusResponse;
-          console.log("Polling status response:", res);
-
-          if (!statusResponse.ok) {
-            throw new Error(res.error || `Polling failed (${statusResponse.status}).`);
-          }
-
-          // If backend decided the record is ready but contains an error (e.g. low confidence or invalid audiogram), show it
-          if (res.ready && res.error) {
-            setUiError(res.error);
-            return;
-          }
-
-          if (res.ready === true || res.data) {
-            finalize(res.data ?? ({ id: recordId } satisfies AnalysisRecord));
-            return;
-          }
-
-          setStatusText(res.message || `Still processing record ${recordId}...`);
-
-          if (attempt < maxAttempts - 1) {
-            await sleep(2000);
-          }
-        }
-
-        throw new Error("The analysis is taking longer than expected. Please try again.");
+        saveAnalysisResult(result);
+        clearPendingInput();
+        router.replace("/result");
       } catch (error) {
-        if (!active) {
-          return;
-        }
-
-        const reason = parseErrorMessage(error, "Unexpected analysis error");
-        setUiError(reason);
+        const reason = error instanceof Error ? error.message : "Unexpected analysis error";
+        router.replace(`/error?reason=${encodeReason(reason)}`);
       }
     };
 
     void run();
-
-    return () => {
-      active = false;
-    };
   }, [router]);
 
   useEffect(() => {
@@ -251,29 +275,6 @@ export default function LoadingPage() {
 
   const currentTip = LOADING_TIPS[tipIndex];
 
-  if (uiError) {
-    return (
-      <div className="page-enter flex min-h-screen items-center justify-center px-4 py-8 sm:px-6">
-        <main className="card w-full max-w-md px-6 py-8 text-center sm:px-8 sm:py-10">
-          <div className="mb-3 flex justify-center">
-            <EarPulseLogo size="md" />
-          </div>
-          <h1 className="mb-2 text-2xl font-bold sm:text-3xl">That did not sound right.</h1>
-          <p className="mb-6 text-sm leading-6 text-[var(--muted)] sm:text-[15px]">{uiError}</p>
-          <PrimaryButton
-            fullWidth
-            onClick={() => {
-              clearPendingInput();
-              router.replace("/scan");
-            }}
-          >
-            Try again
-          </PrimaryButton>
-        </main>
-      </div>
-    );
-  }
-
   return (
     <div className="page-enter flex min-h-screen items-center justify-center px-4 py-8 sm:px-6">
       <main className="card w-full max-w-md px-6 py-8 text-center sm:px-8 sm:py-10">
@@ -284,7 +285,9 @@ export default function LoadingPage() {
           </div>
         </div>
         <h1 className="text-2xl font-bold sm:text-3xl">Loading...</h1>
-        <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--muted)] sm:text-[15px]">{statusText}</p>
+        <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[var(--muted)] sm:text-[15px]">
+          Processing audiogram input and applying rule-based hearing-loss criteria.
+        </p>
 
         <section className="mt-8 p-4 text-center">
           <div className="mb-3 flex items-center justify-center gap-2">
