@@ -114,15 +114,29 @@ export default function ScanPage() {
   };
 
   return (
-    <div className="page-enter min-h-screen px-4 py-5 sm:px-6 sm:py-8">
+    <div className="page-enter relative min-h-screen px-4 pb-5 pt-16 sm:px-6 sm:pb-8">
+      <Link href="/" className="absolute left-4 top-4 rounded p-2 text-[var(--muted)] hover:bg-[rgba(0,0,0,0.03)]">
+        <span className="sr-only">Back to home</span>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </Link>
       <div className="mx-auto w-full max-w-6xl space-y-4 sm:space-y-5">
         {/* Header */}
         <div className="card p-5 sm:p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
             <h1 className="text-xl font-bold sm:text-2xl">Audiogram Screening</h1>
-            <Link href="/" className="text-sm font-semibold text-[var(--brand)] underline-offset-4 hover:underline">
-              Back
-            </Link>
           </div>
           <p className="text-sm leading-6 text-[var(--muted)] sm:text-[15px]">Upload an audiogram image and the app will send it to the server for parsing.</p>
         </div>
