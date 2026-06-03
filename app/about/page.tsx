@@ -12,7 +12,7 @@ export default function AboutPage() {
           <polyline points="15 18 9 12 15 6" />
         </svg>
       </Link>
-      <main className="app-shell w-full max-w-xl text-center">
+      <main className="mx-auto w-full max-w-xl text-center">
         <div className="card px-6 py-8 sm:px-10 sm:py-10">
           <div className="mx-auto mb-8 flex justify-center">
             <EarPulseLogo size="lg" />
