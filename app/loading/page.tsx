@@ -268,7 +268,7 @@ export default function LoadingPage() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       setTipIndex((current) => (current + 1) % LOADING_TIPS.length);
-    }, 4500);
+    }, 7000);
 
     return () => window.clearInterval(interval);
   }, []);
