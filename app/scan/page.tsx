@@ -4,13 +4,55 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, useState } from "react";
+import Cropper, { type Area } from "react-easy-crop";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { clearAnalysisResult, savePendingInput } from "@/lib/storage";
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load image for cropping."));
+    image.src = src;
+  });
+}
+
+async function cropImageDataUrl(imageDataUrl: string, croppedAreaPixels: Area): Promise<string> {
+  const image = await loadImage(imageDataUrl);
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("Could not prepare crop canvas.");
+  }
+
+  canvas.width = Math.round(croppedAreaPixels.width);
+  canvas.height = Math.round(croppedAreaPixels.height);
+
+  context.drawImage(
+    image,
+    croppedAreaPixels.x,
+    croppedAreaPixels.y,
+    croppedAreaPixels.width,
+    croppedAreaPixels.height,
+    0,
+    0,
+    croppedAreaPixels.width,
+    croppedAreaPixels.height,
+  );
+
+  return canvas.toDataURL("image/png");
+}
+
 export default function ScanPage() {
   const router = useRouter();
+  const [originalImageDataUrl, setOriginalImageDataUrl] = useState<string | undefined>(undefined);
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
+  const [isCropping, setIsCropping] = useState(false);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [age, setAge] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -22,15 +64,40 @@ export default function ScanPage() {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
+        setOriginalImageDataUrl(reader.result);
         setImageDataUrl(reader.result);
+        setCrop({ x: 0, y: 0 });
+        setZoom(1);
+        setCroppedAreaPixels(null);
+        setIsCropping(file.type.startsWith("image/"));
       }
     };
     reader.readAsDataURL(file);
   };
 
+  const applyCrop = async () => {
+    if (!originalImageDataUrl || !croppedAreaPixels) {
+      return;
+    }
+
+    try {
+      setError(null);
+      const croppedImageDataUrl = await cropImageDataUrl(originalImageDataUrl, croppedAreaPixels);
+      setImageDataUrl(croppedImageDataUrl);
+      setIsCropping(false);
+    } catch (cropError) {
+      setError(cropError instanceof Error ? cropError.message : "Could not crop the uploaded image.");
+    }
+  };
+
   const submitForAnalysis = () => {
     if (!imageDataUrl) {
       setError("Please upload or capture an audiogram image before continuing.");
+      return;
+    }
+
+    if (isCropping) {
+      setError("Use crop or skip crop before continuing.");
       return;
     }
 
@@ -70,15 +137,61 @@ export default function ScanPage() {
               <input id="file-input" type="file" accept="image/*,.pdf" className="sr-only" onChange={onFile} />
 
               <div className="focus-ring flex min-h-[16rem] flex-1 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border)] bg-[var(--surface-soft)] p-3 text-center sm:min-h-[22rem]">
-                {imageDataUrl ? (
-                  <Image
-                    src={imageDataUrl}
-                    alt="Uploaded audiogram"
-                    width={800}
-                    height={600}
-                    unoptimized
-                    className="max-h-[21rem] w-auto rounded-xl object-contain sm:max-h-[27rem]"
-                  />
+                {originalImageDataUrl && isCropping ? (
+                  <div className="w-full">
+                    <div className="relative h-[18rem] overflow-hidden rounded-xl bg-[#131417] sm:h-[25rem]">
+                      <Cropper
+                        image={originalImageDataUrl}
+                        crop={crop}
+                        zoom={zoom}
+                        aspect={4 / 3}
+                        showGrid
+                        onCropChange={setCrop}
+                        onZoomChange={setZoom}
+                        onCropComplete={(_, nextCroppedAreaPixels) => setCroppedAreaPixels(nextCroppedAreaPixels)}
+                      />
+                    </div>
+                    <label className="mt-4 block text-left text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+                      Zoom
+                    </label>
+                    <input
+                      className="mt-2 w-full accent-[var(--brand)]"
+                      type="range"
+                      min="1"
+                      max="3"
+                      step="0.05"
+                      value={zoom}
+                      onChange={(event) => setZoom(Number(event.target.value))}
+                    />
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <PrimaryButton fullWidth onClick={() => void applyCrop()}>
+                        Use crop
+                      </PrimaryButton>
+                      <PrimaryButton fullWidth variant="secondary" onClick={() => setIsCropping(false)}>
+                        Skip crop
+                      </PrimaryButton>
+                    </div>
+                  </div>
+                ) : imageDataUrl ? (
+                  <div className="flex w-full flex-col items-center">
+                    <Image
+                      src={imageDataUrl}
+                      alt="Uploaded audiogram"
+                      width={800}
+                      height={600}
+                      unoptimized
+                      className="max-h-[21rem] w-auto rounded-xl object-contain sm:max-h-[27rem]"
+                    />
+                    {originalImageDataUrl ? (
+                      <button
+                        type="button"
+                        className="focus-ring mt-4 text-sm font-semibold text-[var(--brand)] underline-offset-4 hover:underline"
+                        onClick={() => setIsCropping(true)}
+                      >
+                        Edit crop
+                      </button>
+                    ) : null}
+                  </div>
                 ) : (
                   <>
                     <p className="text-sm font-semibold sm:text-base">Tap to add image</p>
