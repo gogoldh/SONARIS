@@ -253,7 +253,7 @@ export default function LoadingPage() {
           throw new Error("N8N completed without returning an analysis result.");
         }
 
-        saveAnalysisResult(result);
+        saveAnalysisResult({ ...result, imageDataUrl: pending.imageDataUrl });
         clearPendingInput();
         router.replace("/result");
       } catch (error) {

@@ -48,7 +48,7 @@ export default function ScanPage() {
 
   return (
     <div className="page-enter min-h-screen px-4 py-5 sm:px-6 sm:py-8">
-      <div className="app-shell w-full space-y-4 sm:space-y-5">
+      <div className="mx-auto w-full max-w-6xl space-y-4 sm:space-y-5">
         {/* Header */}
         <div className="card p-5 sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

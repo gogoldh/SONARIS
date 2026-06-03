@@ -30,6 +30,7 @@ export type AnalysisResult = {
   criteria: CriterionEvaluation[];
   disclaimer: string;
   generatedAt: string;
+  imageDataUrl?: string;
   confidence: "provided-thresholds" | "estimated-thresholds" | "webhook";
   measurements: {
     leftEar: EarThresholds;

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useSyncExternalStore, useState } from "react";
 import { jsPDF } from "jspdf";
@@ -139,6 +140,21 @@ export default function ResultPage() {
       };
 
       addHeader();
+      if (result.imageDataUrl) {
+        addHeading("Uploaded audiogram");
+
+        const imageProperties = doc.getImageProperties(result.imageDataUrl);
+        const maxImageWidth = contentWidth;
+        const maxImageHeight = 280;
+        const imageScale = Math.min(maxImageWidth / imageProperties.width, maxImageHeight / imageProperties.height, 1);
+        const imageWidth = imageProperties.width * imageScale;
+        const imageHeight = imageProperties.height * imageScale;
+
+        ensureSpace(imageHeight + 12);
+        doc.addImage(result.imageDataUrl, imageProperties.fileType, margin, y, imageWidth, imageHeight);
+        y += imageHeight + 20;
+      }
+
       addHeading(result.classification);
       addParagraph(result.summary, 12);
 
@@ -217,7 +233,7 @@ export default function ResultPage() {
 
   return (
     <div className="page-enter min-h-screen px-4 py-5 sm:px-6 sm:py-8">
-      <main className="app-shell mx-auto w-full max-w-4xl space-y-4 sm:space-y-5">
+      <main className="mx-auto w-full max-w-4xl space-y-4 sm:space-y-5">
         <div className="print-card card p-5 sm:p-6">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-2xl font-bold sm:text-3xl">{result.classification}</h1>
@@ -231,6 +247,25 @@ export default function ResultPage() {
           </div>
 
           <p className="mb-4 text-sm leading-6 text-[var(--muted)] sm:text-[15px]">{result.summary}</p>
+
+          {result.imageDataUrl ? (
+            <section className="mb-4 rounded-2xl border border-[var(--border)] bg-[#f8f9fc] p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-bold sm:text-base">Uploaded audiogram</h2>
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Scan image</span>
+              </div>
+              <div className="flex min-h-[14rem] items-center justify-center rounded-xl bg-white p-2">
+                <Image
+                  src={result.imageDataUrl}
+                  alt="Uploaded audiogram used for this analysis"
+                  width={900}
+                  height={650}
+                  unoptimized
+                  className="max-h-[24rem] w-auto rounded-lg object-contain"
+                />
+              </div>
+            </section>
+          ) : null}
 
           <div className="rounded-2xl border border-[var(--border)] bg-[#f8f9fc] p-4">
             <p className="text-sm font-semibold">Recommendation</p>
