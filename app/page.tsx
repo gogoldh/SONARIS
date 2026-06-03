@@ -15,7 +15,7 @@ export default function Home() {
           <h1 className="font-display text-3xl sm:text-4xl">SONARIS</h1>
 
           <p className="font-body mx-auto mb-6 mt-3 max-w-md text-sm leading-relaxed text-[var(--muted)] sm:text-base">
-            Professional audiogram review and streamlined specialist referral support.
+            Professional audiogram review and specialist referral support, mainly focused on sensorineural hearing loss.
           </p>
 
           <Link href="/scan" className="mx-auto block w-full max-w-xs sm:max-w-sm">
