@@ -44,12 +44,12 @@ export async function POST(request: Request) {
     const webhookUrl =
       process.env.PARSE_WEBHOOK_URL ||
       "https://n8n-service-xs54.onrender.com/webhook/sonaris";
-
+    
     try {
       const { mimeType, buffer } = parseDataUrl(imageDataUrl);
       const fileExtension = mimeType.split("/")[1] || "png";
       const formData = new FormData();
-      formData.append("data", new Blob([new Uint8Array(buffer)], { type: mimeType }), `upload.${fileExtension}`);
+formData.append("x", new Blob([new Uint8Array(buffer)], { type: mimeType }), `upload.${fileExtension}`);
       formData.append("mimeType", mimeType);
 
       const res = await fetch(webhookUrl, {
