@@ -90,7 +90,26 @@ formData.append("x", new Blob([new Uint8Array(buffer)], { type: mimeType }), `up
 
       // Return whatever the webhook returned. If it uses a different shape,
       // consumers may need adjustment.
-      return NextResponse.json({ success: true, payload: payloadRecord ?? payload ?? text }, { status: 200 });
+      const n8nResponse = payloadRecord ?? payload;
+
+if (
+  isRecord(n8nResponse) &&
+  n8nResponse.success === true &&
+  isRecord(n8nResponse.result)
+) {
+  return NextResponse.json(n8nResponse, { status: 200 });
+}
+
+console.error("Unexpected n8n response shape", { payload, text });
+
+return NextResponse.json(
+  {
+    success: false,
+    error: "N8N completed without returning an analysis result.",
+    upstream: n8nResponse ?? text,
+  },
+  { status: 502 },
+);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Webhook request error", { webhookUrl, message, err });
