@@ -1,0 +1,222 @@
+{
+  "name": "Sonaris_riziv",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "daysInterval": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b68d4e49-087c-4687-8113-7a79abfaa722",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://www.riziv.fgov.be/nl/thema-s/verzorging-kosten-en-terugbetaling/wat-het-ziekenfonds-terugbetaalt/medische-hulpmiddelen-medisch-materiaal/implantaten-en-medische-hulpmiddelen/vergoeding-van-cochleaire-implantaten",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "d8de9c89-5295-47f3-9db6-00fde6b3ff82",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $json.data;\n\nif (!html) {\n  return [{\n    json: {\n      success: false,\n      error: \"NO_HTML\"\n    }\n  }];\n}\n\n// Extract only the section we need.\nconst startMarker = \"<h2>Waarvoor krijgt u een tegemoetkoming?</h2>\";\nconst endMarker = \"<h2>Onder welke voorwaarden hebt u recht op een tegemoetkoming?</h2>\";\n\nconst start = html.indexOf(startMarker);\nconst end = html.indexOf(endMarker);\n\nif (start === -1 || end === -1 || end <= start) {\n  return [{\n    json: {\n      success: false,\n      error: \"CRITERIA_SECTION_NOT_FOUND\"\n    }\n  }];\n}\n\nconst sectionHtml = html.slice(start, end);\n\n// Convert HTML to readable text.\nconst text = sectionHtml\n  .replace(/<br\\s*\\/?>/gi, \"\\n\")\n  .replace(/<\\/li>/gi, \"\\n\")\n  .replace(/<\\/p>/gi, \"\\n\")\n  .replace(/<[^>]+>/g, \"\")\n  .replace(/&nbsp;/gi, \" \")\n  .replace(/&lt;/gi, \"<\")\n  .replace(/&gt;/gi, \">\")\n  .replace(/&ge;/gi, \">=\")\n  .replace(/&le;/gi, \"<=\")\n  .replace(/&amp;/gi, \"&\")\n  .replace(/&#039;/gi, \"'\")\n  .replace(/&eacute;/gi, \"é\")\n  .replace(/&egrave;/gi, \"è\")\n  .replace(/&agrave;/gi, \"à\")\n  .replace(/\\r/g, \"\")\n  .replace(/[ \\t]+/g, \" \")\n  .replace(/\\n\\s*\\n+/g, \"\\n\")\n  .trim();\n\nreturn [{\n  json: {\n    success: true,\n    source: \"RIZIV\",\n    sourceUrl: \"https://www.riziv.fgov.be/nl/thema-s/verzorging-kosten-en-terugbetaling/wat-het-ziekenfonds-terugbetaalt/medische-hulpmiddelen-medisch-materiaal/implantaten-en-medische-hulpmiddelen/vergoeding-van-cochleaire-implantaten\",\n    section: \"Waarvoor krijgt u een tegemoetkoming?\",\n    extractedAt: new Date().toISOString(),\n    criteriaText: text\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "f3a1f27d-178c-460d-a293-020b01ba36f4",
+      "name": "extract criteria"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\n\nif (!d.success || !d.criteriaText) {\n  return [{\n    json: {\n      success: false,\n      error: \"NO_RIZIV_CRITERIA_TEXT\",\n      message: \"No extracted RIZIV criteria were found.\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n\n    country: \"BE\",\n    authority: \"RIZIV\",\n    criteriaName: \"Cochlear implant reimbursement criteria\",\n\n    sourceUrl: d.sourceUrl || null,\n    checkedAt: d.extractedAt || new Date().toISOString(),\n\n    rules: {\n      bilateralSevere: {\n        minPtaEachEar: 70,\n\n        under18: {\n          implant: \"bilateral\"\n        },\n\n        age18Plus: {\n          implant: \"unilateral\"\n        },\n\n        note: \"If the period between first and second implantation is >= 4 years, additional criteria apply for the contralateral implant.\"\n      },\n\n      bilateralSevereWithOssificationOrAuditoryNeuropathy: {\n        minPtaEachEar: 70,\n\n        under18: {\n          implant: \"bilateral\"\n        },\n\n        conditions: [\n          \"bilateral ossification\",\n          \"auditory neuropathy\"\n        ]\n      },\n\n      asymmetricBilateral: {\n        betterEar: {\n          ptaGreaterThan: 30\n        },\n\n        worseEar: {\n          under18MinPta: 85,\n          age18PlusMinPta: 70\n        },\n\n        under18: {\n          implant: \"worstEar\"\n        },\n\n        age18Plus: {\n          implant: \"worstEar\",\n          requiresTrialPeriods: true,\n          trialPeriodEffectiveFrom: \"2026-01-01\"\n        }\n      },\n\n      unilateralDeafness: {\n        affectedEar: {\n          under18MinPta: 85,\n          age18PlusMinPta: 70\n        },\n\n        normalEar: {\n          maxPta: 30\n        },\n\n        under4: {\n          condition: \"congenital\"\n        },\n\n        under18: {\n          condition: \"acquired\"\n        },\n\n        age18Plus: {\n          condition: \"acquired\",\n          requiresTrialPeriods: true,\n          trialPeriodEffectiveFrom: \"2026-01-01\"\n        },\n\n        maxYearsBetweenDiagnosisAndImplantation: 7\n      }\n    },\n\n    reimbursement: {\n      firstImplant: true,\n      externalSoundProcessor: true,\n      replacementImplant: true,\n      replacementSoundProcessor: true\n    },\n\n    rawCriteriaText: d.criteriaText\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "bb3460b3-95bf-440b-b8e4-6c9af851c98b",
+      "name": "normalize"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "TvcOixkvBS9sEjEA",
+          "mode": "list",
+          "cachedResultName": "RIZIV_Criteria",
+          "cachedResultUrl": "/projects/kUrq7LRZR3j1duve/datatables/TvcOixkvBS9sEjEA"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Country",
+              "keyValue": "BE"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Country": "={{ $json.country }}",
+            "authority": "={{ $json.authority }}",
+            "sourceUrl": "={{ $json.sourceUrl }}",
+            "checkedAt": "={{ $json.checkedAt }}",
+            "criteriaJson": "={{ JSON.stringify({ criteriaName: $json.criteriaName, sourceSection: $json.sourceSection, rules: $json.rules, reimbursement: $json.reimbursement, rawCriteriaText: $json.rawCriteriaText }) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "authority",
+              "displayName": "authority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sourceUrl",
+              "displayName": "sourceUrl",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "checkedAt",
+              "displayName": "checkedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "criteriaJson",
+              "displayName": "criteriaJson",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        0
+      ],
+      "id": "23fa6c94-9fd0-4157-b778-646ad9ab1356",
+      "name": "Upsert row(s)"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "extract criteria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract criteria": {
+      "main": [
+        [
+          {
+            "node": "normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalize": {
+      "main": [
+        [
+          {
+            "node": "Upsert row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert row(s)": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "17818abf-0d56-491f-acf7-45dd4d48567b",
+  "meta": {
+    "instanceId": "9b0c63380b3f324f44731b8a39d9e43b3e428f91149eacfb0b65c6e3f840f0cc"
+  },
+  "nodeGroups": [],
+  "id": "x6giXdhd9TMTZEl1",
+  "tags": []
+}

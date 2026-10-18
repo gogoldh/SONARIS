@@ -1,0 +1,310 @@
+{
+  "name": "sonaris_main",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sonaris",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e5c6a71d-b52b-4db1-abb2-2151b6edb798",
+      "name": "Webhook",
+      "webhookId": "6f36347f-1f3d-4115-8701-5fc74a20a67f"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\n\nif (!item.binary?.x) {\n  return [{\n    json: {\n      success: false,\n      error: \"NO_FILE\",\n      message: \"No audiogram file was received.\"\n    }\n  }];\n}\n\nconst binary = item.binary.x;\n\nreturn [{\n  json: {\n    success: true,\n    fileName: binary.fileName || \"audiogram\",\n    mimeType: binary.mimeType || \"application/octet-stream\"\n  },\n  binary: {\n    data: binary\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "fee34fdd-707e-4cb9-bc0c-14f44307a946",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-flash-latest",
+          "mode": "list",
+          "cachedResultName": "models/gemini-flash-latest"
+        },
+        "text": "Analyze this audiogram image.\n\nDetermine whether the image is a valid audiogram.\n\nIf it is a valid audiogram, extract the hearing thresholds for the left and right ear from the graph.\n\nReturn ONLY valid JSON in this exact structure:\n\n{\n  \"validAudiogram\": true,\n  \"imageQuality\": \"good\",\n  \"leftEar\": [\n    {\"frequency\": 250, \"db\": 35}\n  ],\n  \"rightEar\": [\n    {\"frequency\": 250, \"db\": 30}\n  ],\n  \"confidence\": 0.91,\n  \"notes\": []\n}\n\nRules:\n- Do not invent values.\n- Only include thresholds that can actually be read from the image.\n- Frequency must be in Hz.\n- Hearing level must be in dB HL.\n- confidence must be between 0 and 1.\n- If the image is not a valid audiogram, return:\n{\n  \"validAudiogram\": false,\n  \"imageQuality\": \"poor\",\n  \"leftEar\": [],\n  \"rightEar\": [],\n  \"confidence\": 0,\n  \"notes\": [\"Reason\"]\n}\n- Return JSON only. No markdown and no explanation outside the JSON.",
+        "inputType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "03591bc1-7f20-4640-95c6-572ad7fd2b5b",
+      "name": "Analyze an image",
+      "retryOnFail": true,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "X1L3ryJajJIuomK4",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw =\n  $json.content?.parts?.[0]?.text ??\n  $json.text ??\n  $json.output ??\n  \"\";\n\nif (!raw) {\n  return [{\n    json: {\n      success: false,\n      error: \"NO_GEMINI_OUTPUT\"\n    }\n  }];\n}\n\nlet cleaned = raw\n  .replace(/```json\\s*/gi, \"\")\n  .replace(/```\\s*/g, \"\")\n  .trim();\n\ntry {\n  const data = JSON.parse(cleaned);\n\n  return [{\n    json: {\n      success: true,\n      ...data\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      error: \"INVALID_GEMINI_JSON\",\n      raw: cleaned,\n      message: error.message\n    }\n  }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "292ab7ab-ae49-4436-ba45-4f9a8258a169",
+      "name": "parse Gemini JSON"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $json;\n\nconst confidence = Number(d.confidence);\n\nif (d.validAudiogram !== true) {\n  return [{\n    json: {\n      success: false,\n      error: \"INVALID_AUDIOGRAM\",\n      message: \"The uploaded image is not a valid audiogram.\",\n      confidence\n    }\n  }];\n}\n\nif (!Number.isFinite(confidence) || confidence < 0.65) {\n  return [{\n    json: {\n      success: false,\n      error: \"LOW_CONFIDENCE\",\n      message: \"The audiogram could not be read with sufficient confidence.\",\n      confidence\n    }\n  }];\n}\n\nif (\n  !Array.isArray(d.leftEar) ||\n  !Array.isArray(d.rightEar) ||\n  d.leftEar.length === 0 ||\n  d.rightEar.length === 0\n) {\n  return [{\n    json: {\n      success: false,\n      error: \"MISSING_THRESHOLDS\",\n      message: \"Threshold data is missing for one or both ears.\",\n      confidence\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    validAudiogram: true,\n    imageQuality: d.imageQuality,\n    leftEar: d.leftEar,\n    rightEar: d.rightEar,\n    confidence,\n    notes: d.notes || []\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "64358ba9-03ae-40d4-8543-5b571422a435",
+      "name": "quality control"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $json;\n\nconst frequencies = [500, 1000, 2000];\n\nfunction calculatePTA(ear) {\n  const values = frequencies.map(freq => {\n    const point = ear.find(p => Number(p.frequency) === freq);\n\n    return {\n      frequency: freq,\n      db: point ? Number(point.db) : 120\n    };\n  });\n\n  const average =\n    values.reduce((sum, point) => sum + point.db, 0) / values.length;\n\n  return {\n    values,\n    pta: Number(average.toFixed(1))\n  };\n}\n\nconst left = calculatePTA(d.leftEar);\nconst right = calculatePTA(d.rightEar);\n\nreturn [{\n  json: {\n    ...d,\n    pta: {\n      frequencies,\n      left: left.pta,\n      right: right.pta\n    },\n    ptaDetails: {\n      left: left.values,\n      right: right.values\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "c8002d3a-92e8-46fa-a118-19cc0724c4f6",
+      "name": "calculate PTA"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $json;\n\n// MVP: Belgium / RIZIV\n// Later this can come from the user's selected country.\nconst country = \"BE\";\n\nconst criteriaProvider = {\n  BE: {\n    country: \"BE\",\n    authority: \"RIZIV\",\n    name: \"Belgian RIZIV criteria\"\n  }\n};\n\nconst criteria = criteriaProvider[country];\n\nif (!criteria) {\n  return [{\n    json: {\n      ...d,\n      success: false,\n      error: \"NO_CRITERIA_FOR_COUNTRY\",\n      country\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...d,\n    country,\n    criteria\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "c210a5fb-de4e-4442-abed-f81c63a14e47",
+      "name": "select criteria"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "TvcOixkvBS9sEjEA",
+          "mode": "list",
+          "cachedResultName": "RIZIV_Criteria",
+          "cachedResultUrl": "/projects/kUrq7LRZR3j1duve/datatables/TvcOixkvBS9sEjEA"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "Country",
+              "keyValue": "BE"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1568,
+        0
+      ],
+      "id": "bbcf0cdc-f0f0-4799-9057-18a8cbdaac52",
+      "name": "Get row(s)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const criteriaRow = $input.first().json;\n\n// Get the measurements from the earlier node.\nconst audiogram = $(\"select criteria\").first().json;\n\nif (!criteriaRow || !criteriaRow.criteriaJson) {\n  return [{\n    json: {\n      success: false,\n      error: \"RIZIV_CRITERIA_NOT_FOUND\",\n      message: \"No stored RIZIV criteria were found.\"\n    }\n  }];\n}\n\nlet parsedCriteria;\n\ntry {\n  parsedCriteria = JSON.parse(criteriaRow.criteriaJson);\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      error: \"INVALID_RIZIV_CRITERIA_JSON\",\n      message: \"The stored RIZIV criteria could not be parsed.\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...audiogram,\n    country: criteriaRow.Country,\n    criteria: {\n      authority: criteriaRow.authority,\n      sourceUrl: criteriaRow.sourceUrl,\n      checkedAt: criteriaRow.checkedAt,\n      ...parsedCriteria\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        0
+      ],
+      "id": "8d3af877-6196-42d8-9028-2e376ac02a18",
+      "name": "Combine Audiogram and RIZIV"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst d = $input.first().json;\n\nif (!d.success || !d.pta || !d.criteria?.rules) {\n  return [{\n    json: {\n      success: false,\n      error: \"MISSING_REQUIRED_DATA\",\n      message: \"Audiogram measurements or RIZIV criteria are missing.\"\n    }\n  }];\n}\n\nconst rules = d.criteria.rules;\nconst left = Number(d.pta.left);\nconst right = Number(d.pta.right);\n\nif (!Number.isFinite(left) || !Number.isFinite(right)) {\n  return [{\n    json: {\n      success: false,\n      error: \"INVALID_PTA\",\n      message: \"Valid PTA measurements are required.\"\n    }\n  }];\n}\n\n// This node performs audiogram-based screening only.\n// Age and clinical/contextual conditions are not inferred.\nconst flags = [];\n\nif (left >= rules.bilateralSevere.minPtaEachEar &&\n    right >= rules.bilateralSevere.minPtaEachEar) {\n  flags.push(\"BILATERAL_SEVERE_THRESHOLD_MET\");\n}\n\nconst worseEar = Math.max(left, right);\nconst betterEar = Math.min(left, right);\n\nif (betterEar > rules.asymmetricBilateral.betterEar.ptaGreaterThan) {\n  if (worseEar >= rules.asymmetricBilateral.worseEar.under18MinPta) {\n    flags.push(\"ASYMMETRIC_THRESHOLD_MET_FOR_UNDER18\");\n  }\n\n  if (worseEar >= rules.asymmetricBilateral.worseEar.age18PlusMinPta) {\n    flags.push(\"ASYMMETRIC_THRESHOLD_MET_FOR_ADULT\");\n  }\n}\n\nif (worseEar >= rules.unilateralDeafness.affectedEar.under18MinPta &&\n    betterEar <= rules.unilateralDeafness.normalEar.maxPta) {\n  flags.push(\"UNILATERAL_THRESHOLD_MET_FOR_UNDER18\");\n}\n\nif (worseEar >= rules.unilateralDeafness.affectedEar.age18PlusMinPta &&\n    betterEar <= rules.unilateralDeafness.normalEar.maxPta) {\n  flags.push(\"UNILATERAL_THRESHOLD_MET_FOR_ADULT\");\n}\n\nreturn [{\n  json: {\n    ...d,\n    screening: {\n      status: flags.length\n        ? \"POTENTIAL_CRITERIA_MATCH\"\n        : \"NO_THRESHOLD_MATCH\",\n      flags,\n      ptaUsed: {\n        left: left,\n        right: right,\n        frequencies: d.pta.frequencies\n      },\n      explanation: flags.length\n        ? \"One or more audiogram thresholds match a screening category. Additional patient and clinical criteria must be checked.\"\n        : \"The measured PTA values do not meet the threshold categories currently checked by Sonaris.\",\n      requiresClinicalContext: true,\n      disclaimer: \"Screening support only. This result does not establish a diagnosis or reimbursement eligibility.\"\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        0
+      ],
+      "id": "e92a2387-5b43-45c4-85c9-c8c3657bc588",
+      "name": "Evaluate RIZIV Criteria"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst d = $input.first().json;\nconst s = d.screening || {};\n\nreturn [{\n  json: {\n    success: true,\n    result: {\n      status: s.status || \"REVIEW_REQUIRED\",\n      message: s.explanation ||\n        \"The audiogram screening is complete.\",\n      pta: {\n        left: d.pta?.left ?? null,\n        right: d.pta?.right ?? null,\n        frequencies: d.pta?.frequencies ?? []\n      },\n      confidence: d.confidence ?? null,\n      flags: s.flags || [],\n      criteria: {\n        authority: d.criteria?.authority ?? \"RIZIV\",\n        sourceUrl: d.criteria?.sourceUrl ?? null,\n        checkedAt: d.criteria?.checkedAt ?? null\n      },\n      requiresClinicalContext:\n        s.requiresClinicalContext ?? true,\n      disclaimer:\n        \"Decision-support screening only. This result is not a diagnosis or confirmation of reimbursement eligibility.\"\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        0
+      ],
+      "id": "438c955d-3bbf-45b5-94ba-96533e391362",
+      "name": "Format Sonaris Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Analyze an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze an image": {
+      "main": [
+        [
+          {
+            "node": "parse Gemini JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse Gemini JSON": {
+      "main": [
+        [
+          {
+            "node": "quality control",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "quality control": {
+      "main": [
+        [
+          {
+            "node": "calculate PTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "calculate PTA": {
+      "main": [
+        [
+          {
+            "node": "select criteria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "select criteria": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "Combine Audiogram and RIZIV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Audiogram and RIZIV": {
+      "main": [
+        [
+          {
+            "node": "Evaluate RIZIV Criteria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate RIZIV Criteria": {
+      "main": [
+        [
+          {
+            "node": "Format Sonaris Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "dceba51c-3bbc-4764-b278-20fbb60f6a0f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9b0c63380b3f324f44731b8a39d9e43b3e428f91149eacfb0b65c6e3f840f0cc"
+  },
+  "nodeGroups": [],
+  "id": "aUqTA5fGMm01PbC5",
+  "tags": []
+}
