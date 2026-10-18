@@ -171,39 +171,125 @@ export default function LoadingPage() {
   const router = useRouter();
   const [tipIndex, setTipIndex] = useState(0);
 
-  function normalizeWebhookResult(payload: unknown, age?: number): AnalysisResult | null {
-    const candidate = payload && typeof payload === "object" ? (payload as { result?: unknown; analysis?: unknown; payload?: unknown }) : null;
+  
+function normalizeWebhookResult(
+  payload: unknown,
+  age?: number,
+): AnalysisResult | null {
+  if (!payload || typeof payload !== "object") return null;
 
-    const possibleResult = candidate?.result ?? candidate?.analysis ?? candidate?.payload ?? payload;
+  const candidate = payload as {
+    success?: unknown;
+    result?: unknown;
+    payload?: unknown;
+    analysis?: unknown;
+  };
 
-    if (Array.isArray(possibleResult) && possibleResult.length > 0 && isN8nWebhookResult(possibleResult[0])) {
-      return buildWebhookResult(possibleResult[0], age);
-    }
+  const possibleResult =
+    candidate.result ?? candidate.analysis ?? candidate.payload ?? payload;
 
-    if (isN8nWebhookResult(possibleResult)) {
-      return buildWebhookResult(possibleResult, age);
-    }
+  if (!possibleResult || typeof possibleResult !== "object") return null;
 
-    if (possibleResult && typeof possibleResult === "object") {
-      const result = possibleResult as Partial<AnalysisResult>;
+  const result = possibleResult as {
+    status?: string;
+    message?: string;
+    pta?: {
+      left?: number;
+      right?: number;
+      frequencies?: number[];
+    };
+    confidence?: number;
+    flags?: string[];
+    criteria?: {
+      authority?: string;
+      sourceUrl?: string;
+      checkedAt?: string;
+    };
+    requiresClinicalContext?: boolean;
+    disclaimer?: string;
+  };
 
-      if (
-        result.classification &&
-        result.summary &&
-        typeof result.referralRecommended === "boolean" &&
-        result.referralReason &&
-        Array.isArray(result.criteria) &&
-        result.disclaimer &&
-        result.generatedAt &&
-        result.confidence &&
-        result.measurements
-      ) {
-        return translateAnalysisResult(result as AnalysisResult);
-      }
-    }
-
+  if (
+    typeof result.status !== "string" ||
+    !result.pta ||
+    typeof result.pta.left !== "number" ||
+    typeof result.pta.right !== "number"
+  ) {
     return null;
   }
+
+  const matched = result.status === "POTENTIAL_CRITERIA_MATCH";
+  const leftPta = result.pta.left;
+  const rightPta = result.pta.right;
+  const overallPta = Math.round(((leftPta + rightPta) / 2) * 10) / 10;
+
+  const summary =
+    result.message ?? "Audiogram screening completed.";
+
+  const criteria: AnalysisResult["criteria"] = [
+    {
+      key: "RIZIV_SCREENING",
+      title: "RIZIV threshold screening",
+      met: matched,
+      detail: summary,
+    },
+    {
+      key: "LEFT_PTA",
+      title: "Left ear PTA",
+      met: true,
+      detail: `Left ear PTA: ${leftPta} dB HL.`,
+    },
+    {
+      key: "RIGHT_PTA",
+      title: "Right ear PTA",
+      met: true,
+      detail: `Right ear PTA: ${rightPta} dB HL.`,
+    },
+  ];
+
+  for (const flag of result.flags ?? []) {
+    criteria.push({
+      key: `FLAG_${criteria.length}`,
+      title: "Review flag",
+      met: false,
+      detail: flag,
+    });
+  }
+
+  if (result.requiresClinicalContext) {
+    criteria.push({
+      key: "CLINICAL_CONTEXT",
+      title: "Clinical review required",
+      met: false,
+      detail:
+        "Review age, clinical history, and the complete official reimbursement criteria before drawing conclusions.",
+    });
+  }
+
+  return {
+    classification: matched
+      ? "RIZIV criteria matched"
+      : "RIZIV criteria not met",
+    summary,
+    referralRecommended: matched,
+    referralReason: summary,
+    criteria,
+    disclaimer:
+      result.disclaimer ??
+      "Decision-support screening only. This result is not a diagnosis or confirmation of reimbursement eligibility.",
+    generatedAt:
+      result.criteria?.checkedAt ?? new Date().toISOString(),
+    confidence: "webhook",
+    measurements: {
+      leftEar: [0, 0, 0, 0],
+      rightEar: [0, 0, 0, 0],
+      ptaLeft: leftPta,
+      ptaRight: rightPta,
+      ptaOverall: overallPta,
+      age,
+    },
+  };
+}
 
   useEffect(() => {
     const pending = readPendingInput();
@@ -241,8 +327,7 @@ export default function LoadingPage() {
           throw new Error(errorValue || rawText || "Analysis failed.");
         }
 
-        const result = normalizeWebhookResult(payloadValue ?? responsePayload, pending.age);
-
+        const result = normalizeWebhookResult(responsePayload, pending.age);
         if (!result) {
           throw new Error("N8N completed without returning an analysis result.");
         }
